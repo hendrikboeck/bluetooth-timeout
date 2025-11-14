@@ -24,6 +24,13 @@ pub fn init_tracing() {
         .expect("Failed to initialize global tracing subscriber");
 }
 
+pub fn conf_filepath() -> Option<String> {
+    xdg::BaseDirectories::with_prefix("bluetooth-timeout")
+        .place_config_file("config.yml")
+        .map(|path| path.to_string_lossy().to_string())
+        .ok()
+}
+
 static CONF: OnceLock<Conf> = OnceLock::new();
 
 #[derive(Debug, serde::Deserialize)]
@@ -42,6 +49,13 @@ impl Default for Conf {
 }
 
 impl Conf {
+    pub fn load() -> &'static Self {
+        match conf_filepath() {
+            Some(p) => Self::from_file(&p),
+            None => Self::instance(),
+        }
+    }
+
     pub fn from_file(path: &str) -> &'static Self {
         if let Some(conf) = CONF.get() {
             warn!(

@@ -9,6 +9,6 @@ async fn main() {
     conf::init_tracing();
     debug!("Tracing initialized");
 
-    let conf = Conf::instance();
+    let conf = Conf::load();
     debug!("Configuration: {:?}", conf);
 }
