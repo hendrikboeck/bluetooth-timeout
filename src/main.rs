@@ -1,12 +1,13 @@
 use tracing::debug;
 
 mod conf;
+mod log;
 
 use conf::Conf;
 
 #[tokio::main]
 async fn main() {
-    conf::init_tracing();
+    log::init_tracing();
     debug!("Tracing initialized");
 
     let conf = Conf::load();
