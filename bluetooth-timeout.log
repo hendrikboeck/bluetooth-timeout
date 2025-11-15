@@ -1,0 +1,3 @@
+2025-11-15T12:16:12.992950Z DEBUG main ThreadId(01) src/main.rs:10: Tracing initialized
+2025-11-15T12:16:12.993034Z  INFO main ThreadId(01) src/conf.rs:189: Successfully loaded configuration from './config.yml'.
+2025-11-15T12:16:12.993050Z DEBUG main ThreadId(01) src/main.rs:13: Configuration: Conf { timeout_seconds: 300, adapter_path: "/org/bluez/hci0" }

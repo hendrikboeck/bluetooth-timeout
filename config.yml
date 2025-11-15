@@ -1,0 +1,2 @@
+timeout_seconds: 300
+adapter_path: /org/bluez/hci0
