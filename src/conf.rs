@@ -1,10 +1,19 @@
+use std::fs;
 use std::sync::OnceLock;
 
-use std::fs;
 use tracing::{info, warn};
 
+/// Global singleton instance of [`Conf`].
 static CONF: OnceLock<Conf> = OnceLock::new();
 
+/// Returns the path to the configuration file.
+///
+/// In debug builds this is `./config.yml` in the current working directory. In release builds this
+/// uses the XDG base directory and resolves to a path like
+/// `~/.config/bluetooth-timeout/config.yml`.
+///
+/// # Errors
+/// - [`anyhow::Error`] if the config file path cannot be determined (release builds only).
 pub fn conf_filepath() -> anyhow::Result<String> {
     #[cfg(debug_assertions)]
     {
@@ -20,9 +29,21 @@ pub fn conf_filepath() -> anyhow::Result<String> {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
+/// Application configuration.
+///
+/// This type is deserialized from a YAML config file and also provides built-in defaults.
+#[derive(Debug, PartialEq, Eq, Clone, serde::Deserialize)]
 pub struct Conf {
+    /// Number of seconds before a timeout is triggered.
+    ///
+    /// Default: `300`.
+    #[allow(dead_code)]
     timeout_seconds: u64,
+
+    /// D-Bus object path of the Bluetooth adapter to monitor.
+    ///
+    /// Default: `"/org/bluez/hci0"`.
+    #[allow(dead_code)]
     adapter_path: String,
 }
 
@@ -36,6 +57,10 @@ impl Default for Conf {
 }
 
 impl Conf {
+    /// Loads the configuration from [`conf_filepath`] into the global instance.
+    ///
+    /// If the path cannot be determined or the file cannot be read or parsed, falls back to
+    /// [`Conf::instance`], which uses the default configuration.
     pub fn load() -> &'static Self {
         match conf_filepath() {
             Ok(p) => Self::from_file(&p),
@@ -49,6 +74,10 @@ impl Conf {
         }
     }
 
+    /// Initializes the global configuration from the YAML file at `path`.
+    ///
+    /// If the configuration is already initialized, the existing instance is returned and the file
+    /// is ignored. On any read or parse error, falls back to [`Conf::default`].
     pub fn from_file(path: &str) -> &'static Self {
         if let Some(conf) = CONF.get() {
             warn!(
@@ -83,6 +112,10 @@ impl Conf {
         })
     }
 
+    /// Returns the global configuration instance.
+    ///
+    /// If the configuration has not been loaded yet, this initializes it with [`Conf::default`]
+    /// and logs a warning.
     pub fn instance() -> &'static Self {
         CONF.get_or_init(|| {
             warn!(
