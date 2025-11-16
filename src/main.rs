@@ -7,7 +7,7 @@ use conf::Conf;
 
 #[tokio::main]
 async fn main() {
-    log::init_tracing();
+    log::init_tracing().expect("Could not initialize tracing");
     debug!("Tracing initialized");
 
     let conf = Conf::load();
