@@ -1,6 +1,11 @@
 use std::fs;
 use std::sync::OnceLock;
 
+// for some reason, this is flagged as unused
+#[cfg(not(debug_assertions))]
+#[allow(unused_imports)]
+use anyhow::Context;
+
 use tracing::{info, warn};
 
 /// Global singleton instance of [`Conf`].

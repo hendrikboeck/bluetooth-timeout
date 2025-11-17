@@ -1,3 +1,4 @@
+#[cfg(debug_assertions)]
 use std::fs;
 use std::{path::PathBuf, sync::OnceLock};
 
@@ -35,15 +36,15 @@ pub fn log_filepath() -> Result<PathBuf> {
     #[cfg(debug_assertions)]
     {
         let path = PathBuf::from(LOG_FILE_NAME);
-        if fs::exists(&path).unwrap_or(false) {
-            let _ = fs::remove_file(&path).ok();
-        }
+        let _ = fs::remove_file(&path);
         Ok(path)
     }
 
     #[cfg(not(debug_assertions))]
     {
-        xdg::BaseDirectories::with_prefix("bluetooth-timeout").place_data_file(LOG_FILE_NAME)?;
+        xdg::BaseDirectories::with_prefix("bluetooth-timeout")
+            .place_data_file(LOG_FILE_NAME)
+            .with_context(|| "Could not determine log file path")
     }
 }
 
