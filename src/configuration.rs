@@ -43,13 +43,13 @@ pub struct Conf {
     ///
     /// Default: `300`.
     #[allow(dead_code)]
-    timeout_seconds: u64,
+    pub timeout_seconds: u64,
 
     /// D-Bus object path of the Bluetooth adapter to monitor.
     ///
     /// Default: `"/org/bluez/hci0"`.
     #[allow(dead_code)]
-    adapter_path: String,
+    pub adapter_path: String,
 }
 
 impl Default for Conf {

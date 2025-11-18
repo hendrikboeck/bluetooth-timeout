@@ -83,6 +83,7 @@ fn build_file_writer() -> Result<NonBlocking> {
 pub fn init_tracing() -> Result<()> {
     #[cfg(debug_assertions)]
     let stdout_layer = fmt::layer()
+        .pretty()
         .with_thread_ids(true)
         .with_thread_names(true)
         .with_file(true)

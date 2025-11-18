@@ -1,20 +1,17 @@
 use anyhow::Result;
 use core::panic;
 use futures_util::stream::StreamExt;
-use std::cmp::max;
 use tokio::{sync::broadcast, task::JoinHandle};
 use tracing::{debug, error, info, instrument, warn};
 use zbus::{
     Connection,
-    fdo::{ObjectManagerProxy, PropertiesChangedArgs},
-    proxy::Proxy,
+    fdo::{ObjectManagerProxy, PropertiesProxy},
 };
-use zvariant::OwnedValue;
+use zvariant::Value;
 
 const BLUEZ_SERVICE: &str = "org.bluez";
-const BLUEZ_ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
-const BLUEZ_DEVICE_INTERFACE: &str = "org.bluez.Device1";
-const OBJECT_MANAGER_INTERFACE: &str = "org.freedesktop.DBus.ObjectManager";
+// const BLUEZ_ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
+// const BLUEZ_DEVICE_INTERFACE: &str = "org.bluez.Device1";
 
 /// Defines the Bluetooth events that can be observed.
 ///
@@ -23,91 +20,44 @@ const OBJECT_MANAGER_INTERFACE: &str = "org.freedesktop.DBus.ObjectManager";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BluetoothEvent {
     /// Emitted when a Bluetooth adapter is turned on.
-    AdapterOn(String), // Adapter path
+    AdapterOn,
     /// Emitted when a Bluetooth adapter is turned off.
-    AdapterOff(String), // Adapter path
-    /// Emitted when a new Bluetooth device is connected.
-    DeviceConnected(u32), // number of connected devices
-    /// Emitted when a Bluetooth device is disconnected.
-    DeviceDisconnected(u32), // number of connected devices
+    AdapterOff,
+    /// Emitted when a Bluetooth interface connects to a device.
+    InterfaceAdded,
+    /// Emitted when a Bluetooth interface disconnects from a device.
+    InterfaceRemoved,
 }
 
 /// Observes Bluetooth status changes from D-Bus and broadcasts them.
 #[derive(Debug, Clone)]
-pub struct BluetoothObserver {
+pub struct BluetoothEventObserver {
+    /// Interface path for the Bluetooth adapter.
+    pub iface: String,
     /// The current connection to the D-Bus.
     conn: Connection,
     /// The sender for broadcasting events to subscribers.
-    sender: broadcast::Sender<BluetoothEvent>,
-    /// The last known count of connected devices. (used for fallback)
-    device_count_fallback: usize,
+    pub tx: broadcast::Sender<BluetoothEvent>,
 }
 
-impl BluetoothObserver {
-    /// Creates a new `BluetoothObserver`.
-    ///
-    /// Initializes a connection to the system D-Bus, gets the initial count
-    /// of Bluetooth devices, and sets up a broadcast channel for sending events.
-    ///
-    /// # Errors
-    /// - [`anyhow::Error`] if there is a failure connecting to D-Bus or retrieving
-    ///   the initial device count.
-    ///
-    /// # Returns
-    /// A `Result` containing the new `BluetoothObserver` or a D-Bus connection error.
-    pub async fn new(conn: Connection) -> Result<Self> {
-        let (sender, _) = broadcast::channel(10);
+impl BluetoothEventObserver {
+    /// Creates a new Bluetooth event observer for the specified adapter interface.
+    pub async fn new(iface: String) -> Result<Self> {
+        let conn = Connection::system().await?;
+        let (tx, _rx) = broadcast::channel(10);
 
-        let initial_count = Self::get_authoritative_device_count(&conn).await?;
-        info!(
-            initial_device_count = initial_count,
-            "Initial device state retrieved."
-        );
-
-        Ok(Self {
-            conn,
-            sender,
-            device_count_fallback: initial_count,
-        })
-    }
-
-    /// Retrieves the authoritative count of all Bluetooth devices from BlueZ.
-    ///
-    /// # Errors
-    /// - [`anyhow::Error`] if there is a failure querying D-Bus.
-    ///
-    /// # Returns
-    /// A `Result` containing the count of connected Bluetooth devices.
-    async fn get_authoritative_device_count(conn: &Connection) -> Result<usize> {
-        Ok(ObjectManagerProxy::new(conn, BLUEZ_SERVICE, "/")
-            .await?
-            .get_managed_objects()
-            .await?
-            .values()
-            .filter_map(|interfaces| interfaces.get(BLUEZ_DEVICE_INTERFACE))
-            .filter_map(|device_props| device_props.get("Connected"))
-            .filter_map(|v: &OwnedValue| bool::try_from(v).ok())
-            .filter(|connected| *connected)
-            .count())
-    }
-
-    async fn get_device_count(&mut self, update: i32) -> usize {
-        self.device_count_fallback = max(0, self.device_count_fallback as i32 + update) as usize;
-
-        Self::get_authoritative_device_count(&self.conn)
-            .await
-            .unwrap_or(self.device_count_fallback)
+        Ok(Self { iface, conn, tx })
     }
 
     /// Subscribes to Bluetooth events.
     pub fn subscribe(&self) -> broadcast::Receiver<BluetoothEvent> {
-        self.sender.subscribe()
+        self.tx.subscribe()
     }
 
     /// Spawns the observer to run in a background task.
     #[instrument(skip(self))]
-    pub fn listen(mut self) -> JoinHandle<()> {
-        info!("Spawning Bluetooth observer task.");
+    pub fn listen(self) -> JoinHandle<()> {
+        info!("Spawning Bluetooth event observer task.");
         tokio::spawn(async move {
             if let Err(e) = self.run().await {
                 error!("Bluetooth observer failed: {}", e);
@@ -118,83 +68,104 @@ impl BluetoothObserver {
 
     /// The private event loop. Listens for D-Bus signals and processes them.
     #[instrument(skip_all)]
-    async fn run(&mut self) -> Result<()> {
-        let proxy = Proxy::new(
-            &self.conn,
-            BLUEZ_SERVICE,
-            "/org/bluez",
-            OBJECT_MANAGER_INTERFACE,
-        )
-        .await?;
+    async fn run(&self) -> Result<()> {
+        self.dispatch_iface_observer().await?;
+        self.dispatch_adapter_props_observer().await?;
 
-        let status = proxy.introspect().await?;
-        debug!("Introspected BlueZ D-Bus interface:\n{}", status);
+        Ok(())
+    }
 
-        let mut props_changed = proxy.receive_signal("PropertiesChanged").await?;
-        info!("Listening for Bluetooth property changes...");
+    /// Sets up the observer for Bluetooth interface added/removed signals.
+    #[instrument(skip_all)]
+    async fn dispatch_iface_observer(&self) -> Result<()> {
+        let proxy = ObjectManagerProxy::builder(&self.conn)
+            .destination(BLUEZ_SERVICE)?
+            .path("/")? // always root path for ObjectManager
+            .build()
+            .await?;
+        debug!("Bluetooth interface proxy created.");
 
-        while let Some(signal) = props_changed.next().await {
-            debug!("Received PropertiesChanged signal: {:#?}", signal);
+        let mut iface_add_stream = proxy.receive_interfaces_added().await?;
+        let mut iface_rm_stream = proxy.receive_interfaces_removed().await?;
 
-            let path = signal
-                .header()
-                .path()
-                .map(|p| p.as_str().to_string())
-                .unwrap_or("unknown path".into());
-
-            let body = signal.body();
-            let args = match PropertiesChangedArgs::try_from(&body) {
-                Ok(args) => args,
-                Err(e) => {
-                    warn!(
-                        error = %e,
-                        "Failed to parse PropertiesChanged signal. skipping..."
-                    );
-                    continue;
-                }
-            };
-
-            let iface = args.interface_name.as_str();
-            let changed_props = args.changed_properties();
-
-            let event = match iface {
-                BLUEZ_ADAPTER_INTERFACE => changed_props
-                    .get("Powered")
-                    .map(|v| bool::try_from(v).ok())
-                    .flatten()
-                    .map(|powered| {
-                        if powered {
-                            BluetoothEvent::AdapterOn(path)
-                        } else {
-                            BluetoothEvent::AdapterOff(path)
-                        }
-                    }),
-
-                BLUEZ_DEVICE_INTERFACE => match changed_props
-                    .get("Connected")
-                    .map(|v| bool::try_from(v).ok())
-                    .flatten()
-                {
-                    Some(true) => {
-                        let count = self.get_device_count(1).await;
-                        Some(BluetoothEvent::DeviceConnected(count as u32))
+        tokio::spawn({
+            let tx = self.tx.clone();
+            async move {
+                info!("Listening for InterfacesAdded signals.");
+                while let Some(signal) = iface_add_stream.next().await {
+                    debug!("Received InterfacesAdded signal: {:#?}", signal.args());
+                    if let Err(e) = tx.send(BluetoothEvent::InterfaceAdded) {
+                        error!("Failed to send InterfaceAdded event: {}", e);
                     }
-                    Some(false) => {
-                        let count = self.get_device_count(-1).await;
-                        Some(BluetoothEvent::DeviceDisconnected(count as u32))
-                    }
-                    None => None,
-                },
-
-                _ => None,
-            };
-
-            if let Some(event) = event {
-                if self.sender.send(event).is_err() {
-                    debug!("No subscribers to notify about the event.");
                 }
             }
-        }
+        });
+
+        tokio::spawn({
+            let tx = self.tx.clone();
+            async move {
+                info!("Listening for InterfacesRemoved signals.");
+                while let Some(signal) = iface_rm_stream.next().await {
+                    debug!("Received InterfacesRemoved signal: {:#?}", signal.args());
+                    if let Err(e) = tx.send(BluetoothEvent::InterfaceRemoved) {
+                        error!("Failed to send InterfaceRemoved event: {}", e);
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Sets up the observer for Bluetooth adapter property changes.
+    #[instrument(skip_all)]
+    async fn dispatch_adapter_props_observer(&self) -> Result<()> {
+        let proxy = PropertiesProxy::builder(&self.conn)
+            .destination(BLUEZ_SERVICE)?
+            .path(self.iface.as_str())?
+            .build()
+            .await?;
+        debug!("Bluetooth adapter properties proxy created.");
+
+        let mut props_changed_stream = proxy.receive_properties_changed().await?;
+
+        tokio::spawn({
+            let tx = self.tx.clone();
+            async move {
+                info!("Listening for PropertiesChanged signals.");
+
+                while let Some(signal) = props_changed_stream.next().await {
+                    debug!("Received PropertiesChanged signal: {:#?}", signal.args());
+                    let args = &signal.args().unwrap();
+
+                    match args.changed_properties.get("Powered") {
+                        Some(Value::Bool(true)) => {
+                            debug!(
+                                "Bluetooth adapter powered ON on interface: {}",
+                                args.interface_name
+                            );
+                            if let Err(e) = tx.send(BluetoothEvent::AdapterOn) {
+                                error!("Failed to send AdapterOn event: {}", e);
+                            }
+                        }
+
+                        Some(Value::Bool(false)) => {
+                            debug!(
+                                "Bluetooth adapter powered OFF on interface: {}",
+                                args.interface_name
+                            );
+                            if let Err(e) = tx.send(BluetoothEvent::AdapterOff) {
+                                error!("Failed to send AdapterOff event: {}", e);
+                            }
+                        }
+
+                        _ => {
+                            debug!("Powered property not changed or not a boolean.");
+                        }
+                    }
+                }
+            }
+        });
 
         Ok(())
     }

@@ -4,7 +4,7 @@ mod bluetooth;
 mod configuration;
 mod log;
 
-use crate::bluetooth::observer::BluetoothObserver;
+use crate::bluetooth::observer::BluetoothEventObserver;
 use crate::configuration::Conf;
 
 #[tokio::main]
@@ -15,11 +15,7 @@ async fn main() {
     let conf = Conf::load();
     debug!("Configuration:\n{:#?}", conf);
 
-    let conn = zbus::Connection::system()
-        .await
-        .expect("Could not connect to system D-Bus");
-
-    let observer = BluetoothObserver::new(conn)
+    let observer = BluetoothEventObserver::new(conf.adapter_path.clone())
         .await
         .expect("Could not create Bluetooth observer");
 
