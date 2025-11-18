@@ -9,9 +9,7 @@ use zbus::{
 };
 use zvariant::Value;
 
-const BLUEZ_SERVICE: &str = "org.bluez";
-// const BLUEZ_ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
-// const BLUEZ_DEVICE_INTERFACE: &str = "org.bluez.Device1";
+use crate::bluetooth::service::BLUEZ_SERVICE;
 
 /// Defines the Bluetooth events that can be observed.
 ///
