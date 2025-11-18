@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+console-subscriber = "0.5.0"
 futures-util = "0.3.31"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"

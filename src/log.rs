@@ -4,6 +4,7 @@ use std::{path::PathBuf, sync::OnceLock};
 
 use anyhow::{Context, Result};
 
+use console_subscriber::ConsoleLayer;
 use tracing::warn;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*, registry::Registry};
@@ -119,7 +120,10 @@ pub fn init_tracing() -> Result<()> {
                 .with_writer(writer)
                 .with_filter(LOG_LEVEL);
 
-            let subscriber = Registry::default().with(stdout_layer).with(file_layer);
+            let subscriber = Registry::default()
+                .with(stdout_layer)
+                .with(file_layer)
+                .with(ConsoleLayer::builder().spawn());
             tracing::subscriber::set_global_default(subscriber)?;
         }
         Err(e) => {
