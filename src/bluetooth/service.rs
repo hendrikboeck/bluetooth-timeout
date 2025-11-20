@@ -9,10 +9,6 @@ use crate::{
     timeout::TimeoutTask,
 };
 
-// pub const BLUEZ_SERVICE: &str = "org.bluez";
-// pub const BLUEZ_ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
-// pub const BLUEZ_DEVICE_INTERFACE: &str = "org.bluez.Device1";
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BluetoothServiceState {
     Off,
@@ -131,7 +127,8 @@ impl BluetoothService {
 
         match self.state {
             BluetoothServiceState::Off | BluetoothServiceState::Idle
-                if self.active_timer.is_none() =>
+                if self.active_timer.is_none()
+                    || self.active_timer.as_ref().unwrap().is_finished() =>
             {
                 self.active_timer = Some(
                     TimeoutTask {
