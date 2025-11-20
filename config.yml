@@ -1,2 +1,3 @@
-timeout_seconds: 300
+# timeout_seconds: 300
+timeout_seconds: 10
 adapter_path: /org/bluez/hci0

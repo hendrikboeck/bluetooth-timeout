@@ -1,16 +1,12 @@
 use std::time::Duration;
 
-use tokio::time::sleep;
-use tracing::{debug, info};
+use tracing::debug;
 
 mod bluetooth;
 mod configuration;
 mod log;
 
-use crate::bluetooth::{
-    observer::{BluetoothEvent, BluetoothEventObserver},
-    service_proxy::BluetoothServiceProxy,
-};
+use crate::bluetooth::{observer::BluetoothEventObserver, service::BluetoothService};
 use crate::configuration::Conf;
 
 #[tokio::main]
@@ -25,38 +21,19 @@ async fn main() {
         .await
         .expect("Could not create Bluetooth observer");
 
-    let mut rx = observer.subscribe();
+    let rx = observer.subscribe();
     observer.listen();
 
-    let service_proxy = BluetoothServiceProxy::new(conf.adapter_path.clone())
-        .await
-        .expect("Could not create Bluetooth service proxy");
-    let devices = service_proxy
-        .get_devices()
-        .await
-        .expect("Could not get Bluetooth devices");
-    info!("Discovered Bluetooth devices:\n{:#?}", devices);
+    let mut bt_service = BluetoothService::new(
+        conf.adapter_path.clone(),
+        Duration::from_secs(conf.timeout_seconds),
+    )
+    .await
+    .expect("Could not create Bluetooth service");
 
-    loop {
-        let event = rx.recv().await.expect("Bluetooth observer channel closed");
-        info!("Received Bluetooth event: {:#?}", event);
-
-        match event {
-            BluetoothEvent::AdapterOn => {
-                info!("Shutting down Adapter in 10s...");
-                tokio::spawn({
-                    let service_proxy = service_proxy.clone();
-                    async move {
-                        sleep(Duration::from_secs(10)).await;
-                        service_proxy
-                            .turn_off_adapter()
-                            .await
-                            .expect("Could not turn off adapter");
-                        info!("Adapter turned off.");
-                    }
-                });
-            }
-            _ => {}
-        }
-    }
+    bt_service
+        .subscribe_to(rx)
+        .start()
+        .await
+        .expect("Bluetooth service failed");
 }
