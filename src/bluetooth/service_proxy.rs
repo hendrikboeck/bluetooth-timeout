@@ -27,6 +27,24 @@ impl BluetoothServiceProxy {
         })
     }
 
+    pub async fn is_powered(&self) -> Result<bool> {
+        let proxy = PropertiesProxy::builder(&self.conn)
+            .destination(BLUEZ_SERVICE)?
+            .path(self.iface.as_str())?
+            .build()
+            .await?;
+
+        let powered = proxy
+            .get(
+                InterfaceName::from_static_str(BLUEZ_ADAPTER_INTERFACE)?,
+                "Powered",
+            )
+            .await?
+            .downcast_ref::<bool>()?;
+
+        Ok(powered)
+    }
+
     pub async fn get_devices(&self) -> Result<Vec<BluetoothDevice>> {
         let proxy = ObjectManagerProxy::builder(&self.conn)
             .destination(BLUEZ_SERVICE)?
@@ -51,7 +69,8 @@ impl BluetoothServiceProxy {
             let name = props.get("Name").map(|v| v.to_string());
             let connected = props
                 .get("Connected")
-                .map(|v| v.downcast_ref::<bool>().unwrap())
+                .map(|v| v.downcast_ref::<bool>().ok())
+                .flatten()
                 .unwrap_or(false);
 
             devices.push(BluetoothDevice {
