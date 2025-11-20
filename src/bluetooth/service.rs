@@ -54,13 +54,7 @@ impl BluetoothService {
                 "Starting timeout timer for idle adapter with timeout of {:?}",
                 timeout
             );
-            Some(
-                TimeoutTask {
-                    timeout,
-                    service_proxy: service_proxy.clone(),
-                }
-                .spawn(),
-            )
+            Some(TimeoutTask::new(timeout, service_proxy.clone()).spawn())
         } else {
             None
         };
@@ -130,13 +124,8 @@ impl BluetoothService {
                 if self.active_timer.is_none()
                     || self.active_timer.as_ref().unwrap().is_finished() =>
             {
-                self.active_timer = Some(
-                    TimeoutTask {
-                        timeout: self.timeout,
-                        service_proxy: self.service_proxy.clone(),
-                    }
-                    .spawn(),
-                );
+                self.active_timer =
+                    Some(TimeoutTask::new(self.timeout, self.service_proxy.clone()).spawn());
             }
             BluetoothServiceState::Running
                 if self.active_timer.is_some()
@@ -198,13 +187,8 @@ impl BluetoothService {
         } else {
             if self.active_timer.is_none() {
                 debug!("No connected devices and no active timer. Starting timeout timer...");
-                self.active_timer = Some(
-                    TimeoutTask {
-                        timeout: self.timeout,
-                        service_proxy: self.service_proxy.clone(),
-                    }
-                    .spawn(),
-                );
+                self.active_timer =
+                    Some(TimeoutTask::new(self.timeout, self.service_proxy.clone()).spawn());
             }
             self.state = BluetoothServiceState::Idle;
         }

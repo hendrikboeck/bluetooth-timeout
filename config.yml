@@ -1,5 +1,5 @@
 # timeout_seconds: 300
-timeout_s: 10
+timeout_s: 301
 
 dbus:
   service: org.bluez
