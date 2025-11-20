@@ -112,8 +112,8 @@ impl TimeoutTask {
 
     async fn run(mut self) {
         info!(
-            "Starting timeout task: will turn off adapter after {:?} of inactivity.",
-            self.timeout
+            "Starting timeout task: will turn off adapter after {} of inactivity.",
+            humantime::format_duration(self.timeout)
         );
 
         self.notification_at(Duration::from_mins(5)).await;
@@ -131,11 +131,12 @@ impl TimeoutTask {
             .summary("Bluetooth Adapter Turned Off")
             .body("Bluetooth adapter has been turned off due to inactivity.")
             .icon("bluetooth-disabled-symbolic")
-            .replaces_id(self.last_notification_id)
+            // .replaces_id(self.last_notification_id)
             .show()
             .await
             .inspect_err(|e| error!("Failed to show notification: {}", e))
             .ok();
+        info!("Timeout task completed.");
     }
 
     async fn notification_at(&mut self, time: Duration) {
@@ -152,11 +153,11 @@ impl TimeoutTask {
         self.last_notification_id = Notification::builder()
             .summary("Bluetooth Timeout Warning")
             .body(&format!(
-                "Bluetooth adapter will turn off in {:?} due to inactivity.",
-                duration
+                "Bluetooth adapter will turn off in {} due to inactivity.",
+                humantime::format_duration(*duration)
             ))
             .icon("bluetooth-symbolic")
-            .replaces_id(self.last_notification_id)
+            // .replaces_id(self.last_notification_id)
             .show()
             .await
             .inspect_err(|e| error!("Failed to show notification: {}", e))

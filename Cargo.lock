@@ -247,6 +247,7 @@ dependencies = [
  "anyhow",
  "console-subscriber",
  "futures-util",
+ "humantime",
  "serde",
  "serde_yaml",
  "tokio",
