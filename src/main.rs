@@ -5,6 +5,7 @@ use tracing::debug;
 mod bluetooth;
 mod configuration;
 mod log;
+mod timeout;
 
 use crate::bluetooth::{observer::BluetoothEventObserver, service::BluetoothService};
 use crate::configuration::Conf;
@@ -17,7 +18,7 @@ async fn main() {
     let conf = Conf::load();
     debug!("Configuration:\n{:#?}", conf);
 
-    let observer = BluetoothEventObserver::new(conf.adapter_path.clone())
+    let observer = BluetoothEventObserver::new(conf.dbus.adapter_path.clone())
         .await
         .expect("Could not create Bluetooth observer");
 
@@ -25,8 +26,8 @@ async fn main() {
     observer.listen();
 
     let mut bt_service = BluetoothService::new(
-        conf.adapter_path.clone(),
-        Duration::from_secs(conf.timeout_seconds),
+        conf.dbus.adapter_path.clone(),
+        Duration::from_secs(conf.timeout_s),
     )
     .await
     .expect("Could not create Bluetooth service");

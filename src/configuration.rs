@@ -42,21 +42,29 @@ pub struct Conf {
     /// Number of seconds before a timeout is triggered.
     ///
     /// Default: `300`.
-    #[allow(dead_code)]
-    pub timeout_seconds: u64,
+    pub timeout_s: u64,
 
-    /// D-Bus object path of the Bluetooth adapter to monitor.
-    ///
-    /// Default: `"/org/bluez/hci0"`.
-    #[allow(dead_code)]
+    pub dbus: DBusConf,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, serde::Deserialize)]
+pub struct DBusConf {
+    pub service: String,
+    pub adapter_iface: String,
     pub adapter_path: String,
+    pub device_iface: String,
 }
 
 impl Default for Conf {
     fn default() -> Self {
         Self {
-            timeout_seconds: 300, // 5 minutes
-            adapter_path: "/org/bluez/hci0".to_string(),
+            timeout_s: 300, // 5 minutes
+            dbus: DBusConf {
+                service: "org.bluez".to_string(),
+                adapter_iface: "org.bluez.Adapter1".to_string(),
+                device_iface: "org.bluez.Device1".to_string(),
+                adapter_path: "/org/bluez/hci0".to_string(),
+            },
         }
     }
 }

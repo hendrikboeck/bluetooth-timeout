@@ -1,3 +1,8 @@
 # timeout_seconds: 300
-timeout_seconds: 10
-adapter_path: /org/bluez/hci0
+timeout_s: 10
+
+dbus:
+  service: org.bluez
+  adapter_iface: org.bluez.Adapter1
+  adapter_path: /org/bluez/hci0
+  device_iface: org.bluez.Device1

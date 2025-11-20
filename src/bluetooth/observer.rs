@@ -9,7 +9,7 @@ use zbus::{
 };
 use zvariant::Value;
 
-use crate::bluetooth::service::BLUEZ_SERVICE;
+use crate::configuration::Conf;
 
 /// Defines the Bluetooth events that can be observed.
 ///
@@ -77,7 +77,7 @@ impl BluetoothEventObserver {
     #[instrument(skip_all)]
     async fn dispatch_iface_observer(&self) -> Result<()> {
         let proxy = ObjectManagerProxy::builder(&self.conn)
-            .destination(BLUEZ_SERVICE)?
+            .destination(Conf::instance().dbus.service.as_str())?
             .path("/")? // always root path for ObjectManager
             .build()
             .await?;
@@ -119,7 +119,7 @@ impl BluetoothEventObserver {
     #[instrument(skip_all)]
     async fn dispatch_adapter_props_observer(&self) -> Result<()> {
         let proxy = PropertiesProxy::builder(&self.conn)
-            .destination(BLUEZ_SERVICE)?
+            .destination(Conf::instance().dbus.service.as_str())?
             .path(self.iface.as_str())?
             .build()
             .await?;

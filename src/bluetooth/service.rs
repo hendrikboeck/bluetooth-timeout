@@ -1,14 +1,17 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use tokio::{sync::broadcast, time::sleep};
+use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
-use crate::bluetooth::{observer::BluetoothEvent, service_proxy::BluetoothServiceProxy};
+use crate::{
+    bluetooth::{observer::BluetoothEvent, service_proxy::BluetoothServiceProxy},
+    timeout::TimeoutTask,
+};
 
-pub const BLUEZ_SERVICE: &str = "org.bluez";
-pub const BLUEZ_ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
-pub const BLUEZ_DEVICE_INTERFACE: &str = "org.bluez.Device1";
+// pub const BLUEZ_SERVICE: &str = "org.bluez";
+// pub const BLUEZ_ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
+// pub const BLUEZ_DEVICE_INTERFACE: &str = "org.bluez.Device1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BluetoothServiceState {
@@ -33,19 +36,6 @@ async fn get_connected_devices_count_from_proxy(proxy: &BluetoothServiceProxy) -
     Ok(connected_count)
 }
 
-async fn timeout_task(timeout: Duration, service_proxy: BluetoothServiceProxy) {
-    info!(
-        "Starting timeout task: will turn off adapter after {:?} of inactivity.",
-        timeout
-    );
-    sleep(timeout).await;
-    service_proxy
-        .turn_off_adapter()
-        .await
-        .expect("Could not turn off adapter");
-    info!("Adapter turned off.");
-}
-
 impl BluetoothService {
     pub async fn new(iface: String, timeout: Duration) -> Result<Self> {
         let service_proxy = BluetoothServiceProxy::new(iface.clone()).await?;
@@ -68,14 +58,13 @@ impl BluetoothService {
                 "Starting timeout timer for idle adapter with timeout of {:?}",
                 timeout
             );
-            Some({
-                let timeout = timeout;
-                let service_proxy = service_proxy.clone();
-
-                tokio::spawn(async move {
-                    timeout_task(timeout, service_proxy).await;
-                })
-            })
+            Some(
+                TimeoutTask {
+                    timeout,
+                    service_proxy: service_proxy.clone(),
+                }
+                .spawn(),
+            )
         } else {
             None
         };
@@ -144,16 +133,18 @@ impl BluetoothService {
             BluetoothServiceState::Off | BluetoothServiceState::Idle
                 if self.active_timer.is_none() =>
             {
-                self.active_timer = Some({
-                    let timeout = self.timeout;
-                    let service_proxy = self.service_proxy.clone();
-
-                    tokio::spawn(async move {
-                        timeout_task(timeout, service_proxy).await;
-                    })
-                });
+                self.active_timer = Some(
+                    TimeoutTask {
+                        timeout: self.timeout,
+                        service_proxy: self.service_proxy.clone(),
+                    }
+                    .spawn(),
+                );
             }
-            BluetoothServiceState::Running if self.active_timer.is_some() => {
+            BluetoothServiceState::Running
+                if self.active_timer.is_some()
+                    && !self.active_timer.as_ref().unwrap().is_finished() =>
+            {
                 self.active_timer.take().unwrap().abort();
                 info!("Cancelled active timeout timer.");
             }
@@ -173,8 +164,10 @@ impl BluetoothService {
         debug!("Handling AdapterOff event...");
 
         if let Some(timer) = self.active_timer.take() {
-            timer.abort();
-            info!("Cancelled active timeout timer.");
+            if !timer.is_finished() {
+                timer.abort();
+                info!("Cancelled active timeout timer.");
+            }
         }
 
         self.state = BluetoothServiceState::Off;
@@ -199,21 +192,22 @@ impl BluetoothService {
 
         if connected_devices > 0 {
             if let Some(timer) = self.active_timer.take() {
-                timer.abort();
-                info!("Cancelled active timeout timer.");
+                if !timer.is_finished() {
+                    timer.abort();
+                    info!("Cancelled active timeout timer.");
+                }
             }
             self.state = BluetoothServiceState::Running;
         } else {
             if self.active_timer.is_none() {
                 debug!("No connected devices and no active timer. Starting timeout timer...");
-                self.active_timer = Some({
-                    let timeout = self.timeout;
-                    let service_proxy = self.service_proxy.clone();
-
-                    tokio::spawn(async move {
-                        timeout_task(timeout, service_proxy).await;
-                    })
-                });
+                self.active_timer = Some(
+                    TimeoutTask {
+                        timeout: self.timeout,
+                        service_proxy: self.service_proxy.clone(),
+                    }
+                    .spawn(),
+                );
             }
             self.state = BluetoothServiceState::Idle;
         }

@@ -6,10 +6,7 @@ use zbus::{
     zvariant::Value,
 };
 
-use crate::bluetooth::{
-    device::BluetoothDevice,
-    service::{BLUEZ_ADAPTER_INTERFACE, BLUEZ_DEVICE_INTERFACE, BLUEZ_SERVICE},
-};
+use crate::{bluetooth::device::BluetoothDevice, configuration::Conf};
 
 #[derive(Debug, Clone)]
 pub struct BluetoothServiceProxy {
@@ -28,15 +25,16 @@ impl BluetoothServiceProxy {
     }
 
     pub async fn is_powered(&self) -> Result<bool> {
+        let conf = Conf::instance();
         let proxy = PropertiesProxy::builder(&self.conn)
-            .destination(BLUEZ_SERVICE)?
+            .destination(conf.dbus.service.as_str())?
             .path(self.iface.as_str())?
             .build()
             .await?;
 
         let powered = proxy
             .get(
-                InterfaceName::from_static_str(BLUEZ_ADAPTER_INTERFACE)?,
+                InterfaceName::from_static_str(conf.dbus.adapter_iface.as_str())?,
                 "Powered",
             )
             .await?
@@ -46,8 +44,9 @@ impl BluetoothServiceProxy {
     }
 
     pub async fn get_devices(&self) -> Result<Vec<BluetoothDevice>> {
+        let conf = Conf::instance();
         let proxy = ObjectManagerProxy::builder(&self.conn)
-            .destination(BLUEZ_SERVICE)?
+            .destination(conf.dbus.service.as_str())?
             .path("/")?
             .build()
             .await?;
@@ -56,7 +55,7 @@ impl BluetoothServiceProxy {
         let mut devices = vec![];
 
         for (path, ifaces) in objects {
-            let props = match ifaces.get(BLUEZ_DEVICE_INTERFACE) {
+            let props = match ifaces.get(conf.dbus.device_iface.as_str()) {
                 Some(p) => p,
                 None => continue,
             };
@@ -84,15 +83,16 @@ impl BluetoothServiceProxy {
     }
 
     pub async fn turn_off_adapter(&self) -> Result<()> {
+        let conf = Conf::instance();
         let proxy = PropertiesProxy::builder(&self.conn)
-            .destination(BLUEZ_SERVICE)?
+            .destination(conf.dbus.service.as_str())?
             .path(self.iface.as_str())?
             .build()
             .await?;
 
         proxy
             .set(
-                InterfaceName::from_static_str(BLUEZ_ADAPTER_INTERFACE)?,
+                InterfaceName::from_static_str(conf.dbus.adapter_iface.as_str())?,
                 "Powered",
                 Value::Bool(false),
             )
