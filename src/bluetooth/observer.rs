@@ -40,6 +40,20 @@ pub struct BluetoothEventObserver {
 
 impl BluetoothEventObserver {
     /// Creates a new Bluetooth event observer for the specified adapter interface.
+    ///
+    /// # Arguments
+    ///
+    /// - `iface` - A string slice that holds the D-Bus object path of the Bluetooth adapter (e.g.,
+    ///    "/org/bluez/hci0").
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the new [`BluetoothEventObserver`] instance or an error if the
+    /// D-Bus connection fails.
+    ///
+    /// # Errors
+    ///
+    /// - [`anyhow::Error`] if the connection to the system D-Bus cannot be established.
     pub async fn new(iface: String) -> Result<Self> {
         let conn = Connection::system().await?;
         let (tx, _rx) = broadcast::channel(10);
@@ -65,6 +79,11 @@ impl BluetoothEventObserver {
     }
 
     /// The private event loop. Listens for D-Bus signals and processes them.
+    ///
+    /// # Errors
+    ///
+    /// - [`anyhow::Error`] if setting up the observers fails or if there are issues
+    ///     receiving D-Bus signals.
     #[instrument(skip_all)]
     async fn run(&self) -> Result<()> {
         self.dispatch_iface_observer().await?;
@@ -74,6 +93,10 @@ impl BluetoothEventObserver {
     }
 
     /// Sets up the observer for Bluetooth interface added/removed signals.
+    ///
+    /// # Errors
+    ///
+    /// - [`anyhow::Error`] if setting up the observer fails.
     #[instrument(skip_all)]
     async fn dispatch_iface_observer(&self) -> Result<()> {
         let proxy = ObjectManagerProxy::builder(&self.conn)
@@ -116,6 +139,10 @@ impl BluetoothEventObserver {
     }
 
     /// Sets up the observer for Bluetooth adapter property changes.
+    ///
+    /// # Errors
+    ///
+    /// - [`anyhow::Error`] if setting up the observer fails.
     #[instrument(skip_all)]
     async fn dispatch_adapter_props_observer(&self) -> Result<()> {
         let proxy = PropertiesProxy::builder(&self.conn)

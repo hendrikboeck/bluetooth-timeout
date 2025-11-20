@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+/// Represents a Bluetooth device with its relevant properties.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BluetoothDevice {
     /// The D-Bus object path of the Bluetooth device.

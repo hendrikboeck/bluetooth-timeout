@@ -8,6 +8,10 @@ use zbus::{
 
 use crate::{bluetooth::device::BluetoothDevice, configuration::Conf};
 
+/// A proxy for interacting with the Bluetooth service via D-Bus.
+///
+/// This struct manages the connection to the system D-Bus and provides methods
+/// to query and manipulate the state of a specific Bluetooth adapter interface.
 #[derive(Debug, Clone)]
 pub struct BluetoothServiceProxy {
     /// Interface path for the Bluetooth adapter.
@@ -17,6 +21,21 @@ pub struct BluetoothServiceProxy {
 }
 
 impl BluetoothServiceProxy {
+    /// Creates a new `BluetoothServiceProxy` for the specified interface.
+    ///
+    /// # Arguments
+    ///
+    /// - `iface` - A string slice that holds the D-Bus object path of the Bluetooth adapter (e.g.,
+    ///     "/org/bluez/hci0").
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the new `BluetoothServiceProxy` instance or an error if the
+    /// D-Bus connection fails.
+    ///
+    /// # Errors
+    ///
+    /// - [`anyhow::Error`] if the connection to the system D-Bus cannot be established.
     pub async fn new(iface: String) -> Result<Self> {
         Ok(Self {
             iface,
@@ -24,6 +43,17 @@ impl BluetoothServiceProxy {
         })
     }
 
+    /// Checks if the Bluetooth adapter is currently powered on.
+    ///
+    /// This method queries the "Powered" property of the adapter interface via D-Bus.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if the adapter is powered on, `Ok(false)` otherwise.
+    ///
+    /// # Errors
+    ///
+    /// - [`anyhow::Error`] if the D-Bus call fails or the property cannot be retrieved.
     pub async fn is_powered(&self) -> Result<bool> {
         let conf = Conf::instance();
         let proxy = PropertiesProxy::builder(&self.conn)
@@ -43,6 +73,19 @@ impl BluetoothServiceProxy {
         Ok(powered)
     }
 
+    /// Retrieves a list of Bluetooth devices associated with this adapter.
+    ///
+    /// This method queries the ObjectManager for all managed objects and filters them
+    /// to find devices that belong to the current adapter interface.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing a vector of `BluetoothDevice` structs representing the found
+    /// devices.
+    ///
+    /// # Errors
+    ///
+    /// - [`anyhow::Error`] if the D-Bus call fails or the objects cannot be retrieved.
     pub async fn get_devices(&self) -> Result<Vec<BluetoothDevice>> {
         let conf = Conf::instance();
         let proxy = ObjectManagerProxy::builder(&self.conn)
@@ -82,6 +125,17 @@ impl BluetoothServiceProxy {
         Ok(devices)
     }
 
+    /// Turns off the Bluetooth adapter.
+    ///
+    /// This method sets the "Powered" property of the adapter interface to `false` via D-Bus.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the operation was successful, or an error otherwise.
+    ///
+    /// # Errors
+    ///
+    /// - [`anyhow::Error`] if the D-Bus call fails or the property cannot be set.
     pub async fn turn_off_adapter(&self) -> Result<()> {
         let conf = Conf::instance();
         let proxy = PropertiesProxy::builder(&self.conn)

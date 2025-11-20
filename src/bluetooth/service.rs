@@ -9,23 +9,40 @@ use crate::{
     timeout::TimeoutTask,
 };
 
+/// Represents the state of the Bluetooth service.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BluetoothServiceState {
+    /// The Bluetooth adapter is powered off.
     Off,
+    /// The Bluetooth adapter is on, but no devices are connected.
     Idle,
+    /// The Bluetooth adapter is on and at least one device is connected.
     Running,
 }
 
+/// Manages the state of a Bluetooth adapter and handles events.
+///
+/// This service listens for Bluetooth events and manages a timeout to turn off
+/// the adapter when it's idle.
 #[derive(Debug)]
 pub struct BluetoothService {
+    /// The Bluetooth interface name (e.g., "hci0").
     pub iface: String,
+    /// Receiver for Bluetooth events.
+    ///
+    /// This is an `Option` to allow for late initialization via `subscribe_to`.
     rx: Option<broadcast::Receiver<BluetoothEvent>>,
+    /// Proxy to interact with the Bluetooth service via D-Bus.
     service_proxy: BluetoothServiceProxy,
+    /// Current state of the Bluetooth service.
     pub state: BluetoothServiceState,
+    /// Handle to the active timeout timer task, if any.
     pub active_timer: Option<tokio::task::JoinHandle<()>>,
+    /// Duration before the timeout triggers.
     timeout: Duration,
 }
 
+/// Retrieves the number of connected Bluetooth devices using the service proxy.
 async fn get_connected_devices_count_from_proxy(proxy: &BluetoothServiceProxy) -> Result<usize> {
     let devices = proxy.get_devices().await?;
     let connected_count = devices.iter().filter(|dev| dev.connected).count();
@@ -33,6 +50,15 @@ async fn get_connected_devices_count_from_proxy(proxy: &BluetoothServiceProxy) -
 }
 
 impl BluetoothService {
+    /// Creates a new `BluetoothService`.
+    ///
+    /// It initializes the service by determining the current state of the Bluetooth adapter
+    /// and starting a timeout timer if the adapter is idle.
+    ///
+    /// # Arguments
+    ///
+    /// - `iface` - The name of the Bluetooth interface to manage.
+    /// - `timeout` - The duration to wait before turning off an idle adapter.
     pub async fn new(iface: String, timeout: Duration) -> Result<Self> {
         let service_proxy = BluetoothServiceProxy::new(iface.clone()).await?;
         let num_connected_devices = get_connected_devices_count_from_proxy(&service_proxy).await?;
@@ -72,11 +98,16 @@ impl BluetoothService {
         Ok(service)
     }
 
+    /// Subscribes the service to a broadcast channel for `BluetoothEvent`s.
     pub fn subscribe_to(&mut self, rx: broadcast::Receiver<BluetoothEvent>) -> &mut Self {
         self.rx = Some(rx);
         return self;
     }
 
+    /// Starts the main event loop for the service.
+    ///
+    /// This method will run indefinitely, waiting for and processing `BluetoothEvent`s.
+    /// It requires a receiver to have been subscribed via `subscribe_to`.
     pub async fn start(&mut self) -> Result<()> {
         if self.rx.is_none() {
             return Err(anyhow::anyhow!(
@@ -116,6 +147,10 @@ impl BluetoothService {
         }
     }
 
+    /// Handles the `AdapterOn` event.
+    ///
+    /// This method updates the service state and manages the timeout timer based on
+    /// whether any devices are connected.
     pub async fn on_adapter_on(&mut self) -> Result<()> {
         debug!("Handling AdapterOn event...");
 
@@ -146,6 +181,9 @@ impl BluetoothService {
         Ok(())
     }
 
+    /// Handles the `AdapterOff` event.
+    ///
+    /// This method cancels any active timeout timer and sets the state to `Off`.
     pub async fn on_adapter_off(&mut self) -> Result<()> {
         debug!("Handling AdapterOff event...");
 
@@ -168,18 +206,24 @@ impl BluetoothService {
         Ok(())
     }
 
+    /// Handles the `InterfaceAdded` event, which typically signifies a device connection.
     pub async fn on_interface_added(&mut self) -> Result<()> {
         debug!("Handling InterfaceAdded event...");
 
         self.on_interface_changed().await
     }
 
+    /// Handles the `InterfaceRemoved` event, which typically signifies a device disconnection.
     pub async fn on_interface_removed(&mut self) -> Result<()> {
         debug!("Handling InterfaceRemoved event...");
 
         self.on_interface_changed().await
     }
 
+    /// Handles changes in device connections.
+    ///
+    /// This method checks the number of connected devices and updates the service state
+    /// and timeout timer accordingly.
     async fn on_interface_changed(&mut self) -> Result<()> {
         let connected_devices = self.get_connected_devices_count().await?;
         debug!("Connected devices count: {}", connected_devices);
@@ -204,6 +248,7 @@ impl BluetoothService {
         Ok(())
     }
 
+    /// Gets the current number of connected devices.
     async fn get_connected_devices_count(&self) -> Result<usize> {
         get_connected_devices_count_from_proxy(&self.service_proxy).await
     }

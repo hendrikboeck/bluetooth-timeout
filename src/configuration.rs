@@ -44,14 +44,33 @@ pub struct Conf {
     /// Default: `300`.
     pub timeout_s: u64,
 
+    /// D-Bus related configuration.
     pub dbus: DBusConf,
 }
 
+/// D-Bus related configuration.
+///
+/// This struct is part of the main [`Conf`] struct.
 #[derive(Debug, PartialEq, Eq, Clone, serde::Deserialize)]
 pub struct DBusConf {
+    /// D-Bus service name (usually "org.bluez").
+    ///
+    /// Default: "org.bluez".
     pub service: String,
+
+    /// D-Bus interface name for Bluetooth adapters.
+    ///
+    /// Default: "org.bluez.Adapter1".
     pub adapter_iface: String,
+
+    /// D-Bus object path for the Bluetooth adapter to manage.
+    ///
+    /// Default: "/org/bluez/hci0".
     pub adapter_path: String,
+
+    /// D-Bus interface name for Bluetooth devices.
+    ///
+    /// Default: "org.bluez.Device1".
     pub device_iface: String,
 }
 
