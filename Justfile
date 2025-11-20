@@ -21,6 +21,12 @@ install: build
     # Shutdown existing service if running
     systemctl --user disable --now {{SERVICE_NAME}} || true
 
+    # copy config file if it does not exist
+    if [ ! -f "$HOME/.config/{{BIN_NAME}}/config.yml" ]; then \
+        mkdir -p "$HOME/.config/{{BIN_NAME}}"; \
+        cp config.yml "$HOME/.config/{{BIN_NAME}}/config.yml"; \
+    fi
+
     # Install binary
     mkdir -p {{INSTALL_DIR}}
     cp target/release/{{BIN_NAME}} {{INSTALL_DIR}}/{{BIN_NAME}}
