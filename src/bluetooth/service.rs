@@ -62,7 +62,13 @@ impl BluetoothService {
     pub async fn new(iface: String, timeout: Duration) -> Result<Self> {
         let service_proxy = BluetoothServiceProxy::new(iface.clone()).await?;
         let num_connected_devices = get_connected_devices_count_from_proxy(&service_proxy).await?;
-        let powered = service_proxy.is_powered().await?;
+
+        // Assume adapter is off if we cannot determine its powered state (e.g., Adapter not found)
+        let powered = service_proxy.is_powered().await.unwrap_or(false);
+        if !powered {
+            assert!(num_connected_devices == 0);
+        }
+
         let state = match (powered, num_connected_devices) {
             (false, _) => BluetoothServiceState::Off,
             (true, 0) => BluetoothServiceState::Idle,
