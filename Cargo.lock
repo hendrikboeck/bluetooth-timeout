@@ -256,7 +256,6 @@ dependencies = [
  "tracing-subscriber",
  "xdg",
  "zbus",
- "zvariant",
 ]
 
 [[package]]

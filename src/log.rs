@@ -3,10 +3,8 @@ use std::fs;
 use std::{path::PathBuf, sync::OnceLock};
 
 use anyhow::{Context, Result};
-
 #[cfg(debug_assertions)]
 use console_subscriber::ConsoleLayer;
-
 use tracing::warn;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*, registry::Registry};

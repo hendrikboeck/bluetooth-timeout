@@ -1,13 +1,14 @@
-use anyhow::Result;
 use core::panic;
+
+use anyhow::Result;
 use futures_util::stream::StreamExt;
 use tokio::{sync::broadcast, task::JoinHandle};
 use tracing::{debug, error, info, instrument, warn};
 use zbus::{
     Connection,
     fdo::{ObjectManagerProxy, PropertiesProxy},
+    zvariant::Value,
 };
-use zvariant::Value;
 
 use crate::configuration::Conf;
 

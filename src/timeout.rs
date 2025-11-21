@@ -1,5 +1,6 @@
-use anyhow::Result;
 use std::time::Duration;
+
+use anyhow::Result;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 use zbus::Connection;

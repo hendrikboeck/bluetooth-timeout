@@ -7,8 +7,10 @@ mod configuration;
 mod log;
 mod timeout;
 
-use crate::bluetooth::{observer::BluetoothEventObserver, service::BluetoothService};
-use crate::configuration::Conf;
+use crate::{
+    bluetooth::{observer::BluetoothEventObserver, service::BluetoothService},
+    configuration::Conf,
+};
 
 #[tokio::main]
 async fn main() {
