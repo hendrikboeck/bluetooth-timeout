@@ -43,10 +43,11 @@ pub struct BluetoothService {
 }
 
 /// Retrieves the number of connected Bluetooth devices using the service proxy.
-async fn get_connected_devices_count_from_proxy(proxy: &BluetoothServiceProxy) -> Result<usize> {
-    let devices = proxy.get_devices().await?;
+async fn get_connected_devices_count_from_proxy(proxy: &BluetoothServiceProxy) -> usize {
+    let devices = proxy.get_devices().await.unwrap_or(vec![]);
     let connected_count = devices.iter().filter(|dev| dev.connected).count();
-    Ok(connected_count)
+
+    connected_count
 }
 
 impl BluetoothService {
@@ -61,21 +62,18 @@ impl BluetoothService {
     /// - `timeout` - The duration to wait before turning off an idle adapter.
     pub async fn new(iface: String, timeout: Duration) -> Result<Self> {
         let service_proxy = BluetoothServiceProxy::new(iface.clone()).await?;
-        let num_connected_devices = get_connected_devices_count_from_proxy(&service_proxy).await?;
-
+        let num_connected_devices = get_connected_devices_count_from_proxy(&service_proxy).await;
         // Assume adapter is off if we cannot determine its powered state (e.g., Adapter not found)
         let powered = service_proxy.is_powered().await.unwrap_or(false);
-        if !powered {
-            assert!(num_connected_devices == 0);
-        }
 
         let state = match (powered, num_connected_devices) {
-            (false, _) => BluetoothServiceState::Off,
+            (false, 0) => BluetoothServiceState::Off,
             (true, 0) => BluetoothServiceState::Idle,
             (true, devs) if devs > 0 => BluetoothServiceState::Running,
             _ => {
                 return Err(anyhow::anyhow!(
-                    "Could not determine BluetoothService state"
+                    "Could not determine BluetoothService state or encountered unexpected state
+                    (like powered: false with connected devices)"
                 ));
             }
         };
@@ -178,7 +176,7 @@ impl BluetoothService {
             _ => {}
         }
 
-        if self.get_connected_devices_count().await? > 0 {
+        if self.get_connected_devices_count().await > 0 {
             self.state = BluetoothServiceState::Running;
         } else {
             self.state = BluetoothServiceState::Idle;
@@ -231,7 +229,7 @@ impl BluetoothService {
     /// This method checks the number of connected devices and updates the service state
     /// and timeout timer accordingly.
     async fn on_interface_changed(&mut self) -> Result<()> {
-        let connected_devices = self.get_connected_devices_count().await?;
+        let connected_devices = self.get_connected_devices_count().await;
         debug!("Connected devices count: {}", connected_devices);
 
         if connected_devices > 0 {
@@ -255,7 +253,7 @@ impl BluetoothService {
     }
 
     /// Gets the current number of connected devices.
-    async fn get_connected_devices_count(&self) -> Result<usize> {
+    async fn get_connected_devices_count(&self) -> usize {
         get_connected_devices_count_from_proxy(&self.service_proxy).await
     }
 }
