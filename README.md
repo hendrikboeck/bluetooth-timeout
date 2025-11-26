@@ -41,19 +41,31 @@ The project uses a [Justfile](Justfile) to automate building and installation.
 
 ## Configuration
 
-The configuration file is located at `~/.config/bluetooth-timeout/config.yml` (created automatically during installation).
+The configuration file is located at `~/.config/bluetooth-timeout/config.yml` (created automatically during installation with `just install`).
 
-You can modify the timeout duration (in seconds) in [config.yml](config.yml):
+You can modify the timeout duration (in seconds) in [contrib/config.yml](contrib/config.yml):
 
 ```yaml
-# Number of seconds before timeout (default: 300s / 5 minutes)
-timeout_s: 300
+timeout: 5m1s
+
+notifications_enabled: true
+notifications_at:
+  - 5m
+  - 1m
+  - 30s
+  - 10s
 
 dbus:
   service: org.bluez
   adapter_iface: org.bluez.Adapter1
   adapter_path: /org/bluez/hci0
   device_iface: org.bluez.Device1
+```
+
+`just install` copies this file to the appropriate XDG config directory if it doesn't already exist (does not check backwards compatibility). To manually overwrite the config file, you can copy it yourself (e.g.):
+
+```sh
+cp contrib/config.yml $XDG_CONFIG_HOME/bluetooth-timeout/config.yml
 ```
 
 See [`src/configuration.rs`](src/configuration.rs) for implementation details.

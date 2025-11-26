@@ -1,4 +1,4 @@
-timeout: 1m1s
+timeout: 5m1s
 
 notifications_enabled: true
 notifications_at:
