@@ -1,5 +1,7 @@
+// -- std imports
 use core::panic;
 
+// -- crate imports
 use anyhow::Result;
 use futures_util::stream::StreamExt;
 use tokio::{sync::broadcast, task::JoinHandle};
@@ -10,6 +12,7 @@ use zbus::{
     zvariant::Value,
 };
 
+// -- module imports
 use crate::configuration::Conf;
 
 /// Defines the Bluetooth events that can be observed.

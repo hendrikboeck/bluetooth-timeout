@@ -1,5 +1,11 @@
-# timeout_seconds: 300
-timeout_s: 61
+timeout: 1m1s
+
+notifications_enabled: true
+notifications_at:
+- 5m
+- 1m
+- 30s
+- 10s
 
 dbus:
   service: org.bluez

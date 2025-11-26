@@ -1,3 +1,4 @@
+// -- crate imports
 use anyhow::Result;
 use zbus::{
     Connection,
@@ -6,6 +7,7 @@ use zbus::{
     zvariant::Value,
 };
 
+// -- module imports
 use crate::{bluetooth::device::BluetoothDevice, configuration::Conf};
 
 /// A proxy for interacting with the Bluetooth service via D-Bus.

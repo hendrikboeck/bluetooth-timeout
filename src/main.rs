@@ -1,12 +1,14 @@
-use std::time::Duration;
-
+// -- crate imports
 use tracing::debug;
 
+// -- module definitions
 mod bluetooth;
 mod configuration;
 mod log;
+mod serde_ext;
 mod timeout;
 
+// -- module imports
 use crate::{
     bluetooth::{observer::BluetoothEventObserver, service::BluetoothService},
     configuration::Conf,
@@ -27,12 +29,10 @@ async fn main() {
     let rx = observer.subscribe();
     observer.listen();
 
-    let mut bt_service = BluetoothService::new(
-        conf.dbus.adapter_path.clone(),
-        Duration::from_secs(conf.timeout_s),
-    )
-    .await
-    .expect("Could not create Bluetooth service");
+    let mut bt_service =
+        BluetoothService::new(conf.dbus.adapter_path.clone(), conf.timeout.clone())
+            .await
+            .expect("Could not create Bluetooth service");
 
     bt_service
         .subscribe_to(rx)

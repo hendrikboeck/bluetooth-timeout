@@ -1,11 +1,14 @@
+// -- std imports
 use std::time::Duration;
 
+// -- crate imports
 use anyhow::Result;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 use zbus::Connection;
 
-use crate::bluetooth::service_proxy::BluetoothServiceProxy;
+// -- module imports
+use crate::{bluetooth::service_proxy::BluetoothServiceProxy, configuration::Conf};
 
 /// The application name used when sending notifications to the desktop environment.
 pub const NOTIFICATION_APP_NAME: &str = "bluetooth-timeout";
@@ -142,11 +145,13 @@ impl TimeoutTask {
             "Starting timeout task: will turn off adapter after {} of inactivity.",
             humantime::format_duration(self.timeout)
         );
+        let conf = Conf::instance();
 
-        self.notification_at(Duration::from_mins(5)).await;
-        self.notification_at(Duration::from_secs(60)).await;
-        self.notification_at(Duration::from_secs(30)).await;
-        self.notification_at(Duration::from_secs(10)).await;
+        if conf.notifications_enabled {
+            for &time in &conf.notifications_at {
+                self.notification_at(time.clone()).await;
+            }
+        }
 
         tokio::time::sleep(self.timeout).await;
         match self.service_proxy.turn_off_adapter().await {
@@ -154,15 +159,17 @@ impl TimeoutTask {
             Err(e) => warn!("Failed to turn off adapter: {}", e),
         }
 
-        Notification::builder()
-            .summary("Bluetooth Adapter Turned Off")
-            .body("Bluetooth adapter has been turned off due to inactivity.")
-            .icon("bluetooth-disabled-symbolic")
-            // .replaces_id(self.last_notification_id)
-            .show()
-            .await
-            .inspect_err(|e| error!("Failed to show notification: {}", e))
-            .ok();
+        if conf.notifications_enabled {
+            Notification::builder()
+                .summary("Bluetooth Adapter Turned Off")
+                .body("Bluetooth adapter has been turned off due to inactivity.")
+                .icon("bluetooth-disabled-symbolic")
+                // .replaces_id(self.last_notification_id)
+                .show()
+                .await
+                .inspect_err(|e| error!("Failed to show notification: {}", e))
+                .ok();
+        }
         info!("Timeout task completed.");
     }
 

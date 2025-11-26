@@ -1,9 +1,12 @@
+// -- std imports
 use std::time::Duration;
 
+// -- crate imports
 use anyhow::Result;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
+// -- module imports
 use crate::{
     bluetooth::{observer::BluetoothEvent, service_proxy::BluetoothServiceProxy},
     timeout::TimeoutTask,

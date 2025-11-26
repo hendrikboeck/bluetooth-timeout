@@ -24,7 +24,7 @@ install: build
     # copy config file if it does not exist
     if [ ! -f "$HOME/.config/{{BIN_NAME}}/config.yml" ]; then \
         mkdir -p "$HOME/.config/{{BIN_NAME}}"; \
-        cp config.yml "$HOME/.config/{{BIN_NAME}}/config.yml"; \
+        cp contrib/config.yml "$HOME/.config/{{BIN_NAME}}/config.yml"; \
     fi
 
     # Install binary

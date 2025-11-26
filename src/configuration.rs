@@ -1,28 +1,35 @@
-use std::fs;
+// -- std imports
 use std::sync::OnceLock;
+use std::{fs, time::Duration};
 
+// -- crate imports (conditional)
 // for some reason, this is flagged as unused
 #[cfg(not(debug_assertions))]
 #[allow(unused_imports)]
 use anyhow::Context;
 
+// -- crate imports
+use anyhow::Result;
 use tracing::{info, warn};
+
+// -- module imports
+use crate::serde_ext::humantime_serde_duration;
 
 /// Global singleton instance of [`Conf`].
 static CONF: OnceLock<Conf> = OnceLock::new();
 
 /// Returns the path to the configuration file.
 ///
-/// In debug builds this is `./config.yml` in the current working directory. In release builds this
-/// uses the XDG base directory and resolves to a path like
+/// In debug builds this is `./contrib/config.yml` in the current working directory. In release
+/// builds this uses the XDG base directory and resolves to a path like
 /// `~/.config/bluetooth-timeout/config.yml`.
 ///
 /// # Errors
 /// - [`anyhow::Error`] if the config file path cannot be determined (release builds only).
-pub fn conf_filepath() -> anyhow::Result<String> {
+pub fn conf_filepath() -> Result<String> {
     #[cfg(debug_assertions)]
     {
-        Ok("./config.yml".into())
+        Ok("./contrib/config.yml".into())
     }
 
     #[cfg(not(debug_assertions))]
@@ -41,8 +48,20 @@ pub fn conf_filepath() -> anyhow::Result<String> {
 pub struct Conf {
     /// Number of seconds before a timeout is triggered.
     ///
-    /// Default: `300`.
-    pub timeout_s: u64,
+    /// Default: `5m1s`.
+    #[serde(deserialize_with = "humantime_serde_duration::deserialize")]
+    pub timeout: Duration,
+
+    /// Whether notifications are enabled.
+    ///
+    /// Default: `true`.
+    pub notifications_enabled: bool,
+
+    /// Notifications to be sent at specified durations before the timeout ends.
+    ///
+    /// Default: `[5m, 1m, 30s, 10s]`.
+    #[serde(deserialize_with = "humantime_serde_duration::deserialize_vec")]
+    pub notifications_at: Vec<Duration>,
 
     /// D-Bus related configuration.
     pub dbus: DBusConf,
@@ -77,7 +96,14 @@ pub struct DBusConf {
 impl Default for Conf {
     fn default() -> Self {
         Self {
-            timeout_s: 300, // 5 minutes
+            timeout: Duration::from_secs(301),
+            notifications_enabled: true,
+            notifications_at: vec![
+                Duration::from_mins(5),
+                Duration::from_mins(1),
+                Duration::from_secs(30),
+                Duration::from_secs(10),
+            ],
             dbus: DBusConf {
                 service: "org.bluez".to_string(),
                 adapter_iface: "org.bluez.Adapter1".to_string(),

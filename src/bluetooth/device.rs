@@ -1,3 +1,4 @@
+// -- crate imports
 use serde::{Deserialize, Serialize};
 
 /// Represents a Bluetooth device with its relevant properties.
