@@ -1,4 +1,15 @@
-# Bluetooth Timeout Daemon
+<br />
+<div align="center">
+<a href="https://github.com/hendrikboeck/bluetooth-timeout">
+    <img src="https://raw.githubusercontent.com/hendrikboeck/bluetooth-timeout/main/.github/md/icon_x1024.png" alt="Logo" width="128" height="128">
+</a>
+
+<h1 align="center">bluetooth-timeout <code>v0.1.1</code></h1>
+
+<p align="center">
+    Bluetooth Timeout Daemon for Linux <i>(written in Rust, btw.)</i>
+</p>
+</div>
 
 `bluetooth-timeout` is a lightweight Rust daemon for Linux that automatically turns off your Bluetooth adapter after a configurable period of inactivity (i.e., when the adapter is powered on but no devices are connected).
 
