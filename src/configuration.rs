@@ -34,7 +34,9 @@ pub fn conf_filepath() -> Result<String> {
 
     #[cfg(not(debug_assertions))]
     {
-        xdg::BaseDirectories::with_prefix("bluetooth-timeout")
+        const APP_ID: &str = env!("CARGO_PKG_NAME");
+
+        xdg::BaseDirectories::with_prefix(APP_ID)
             .get_config_file("config.yml")
             .map(|path| path.to_string_lossy().to_string())
             .context("Could not determine config file path")
@@ -96,7 +98,7 @@ pub struct DBusConf {
 impl Default for Conf {
     fn default() -> Self {
         Self {
-            timeout: Duration::from_secs(301),
+            timeout: Duration::from_mins(5),
             notifications_enabled: true,
             notifications_at: vec![
                 Duration::from_mins(5),

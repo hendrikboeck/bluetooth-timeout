@@ -3,7 +3,7 @@ use anyhow::Result;
 use zbus::Connection;
 
 /// The application name used when sending notifications to the desktop environment.
-pub const NOTIFICATION_APP_NAME: &str = "bluetooth-timeout";
+pub const NOTIFICATION_APP_NAME: &str = env!("CARGO_PKG_NAME");
 
 /// A builder-pattern struct for constructing and sending desktop notifications via D-Bus.
 #[derive(Debug, Clone)]

@@ -22,7 +22,7 @@ use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*, registry::Registr
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 /// Name of the log file created by the application.
-const LOG_FILE_NAME: &str = "bluetooth-timeout.log";
+const LOG_FILE_NAME: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
 
 /// Log level used in debug builds.
 #[cfg(debug_assertions)]
@@ -49,7 +49,9 @@ pub fn log_filepath() -> Result<PathBuf> {
 
     #[cfg(not(debug_assertions))]
     {
-        xdg::BaseDirectories::with_prefix("bluetooth-timeout")
+        const APP_ID: &str = env!("CARGO_PKG_NAME");
+
+        xdg::BaseDirectories::with_prefix(APP_ID)
             .place_data_file(LOG_FILE_NAME)
             .with_context(|| "Could not determine log file path")
     }
