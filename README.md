@@ -36,7 +36,7 @@ It’s designed to run as a user-level `systemd` service and is configured via a
 - **Linux** with **BlueZ** (standard Bluetooth stack).
 - **Rust** (latest stable) and Cargo.
 - **Just** (command runner) - Recommended for building and installing.
-- A notification daemon (e.g., `dunst`, `mako`, or GNOME/KDE built-in) to see the warnings.
+- A notification daemon (e.g., `dunst`, `mako`, `swaync` or GNOME/KDE built-in) to see the warnings.
 
 ## Installation
 
@@ -65,7 +65,7 @@ The configuration file is located at `~/.config/bluetooth-timeout/config.yml` (c
 You can modify the timeout duration (in seconds) in [contrib/config.yml](contrib/config.yml):
 
 ```yaml
-timeout: 5m1s
+timeout: 5m
 
 notifications_enabled: true
 notifications_at:
@@ -117,5 +117,5 @@ To run the project locally in debug mode:
 cargo run
 ```
 
-In debug mode, the configuration is read from [`constrib/config.yml`](contrib/config.yml) in the current directory instead of the XDG config path.
+In debug mode, the configuration is read from [`contrib/config.yml`](contrib/config.yml) in the current directory instead of the XDG config path.
 
