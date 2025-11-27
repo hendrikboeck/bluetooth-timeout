@@ -5,6 +5,7 @@ use tracing::debug;
 mod bluetooth;
 mod configuration;
 mod log;
+mod notification;
 mod serde_ext;
 mod timeout;
 
