@@ -49,8 +49,8 @@ impl TimeoutTask {
         );
         let conf = Conf::instance();
 
-        if conf.notifications_enabled {
-            for &time in &conf.notifications_at {
+        if conf.notifications.enabled {
+            for &time in &conf.notifications.at {
                 self.notification_at(time.clone()).await;
             }
         }
@@ -61,7 +61,7 @@ impl TimeoutTask {
             Err(e) => warn!("Failed to turn off adapter: {}", e),
         }
 
-        if conf.notifications_enabled {
+        if conf.notifications.enabled {
             let _ = Notification::new()
                 .title("Bluetooth Adapter Turned Off")
                 .body("Bluetooth adapter has been turned off due to inactivity.")

@@ -54,19 +54,28 @@ pub struct Conf {
     #[serde(deserialize_with = "humantime_serde_duration::deserialize")]
     pub timeout: Duration,
 
+    /// Notification configuration.
+    pub notifications: NotificationConf,
+
+    /// D-Bus related configuration.
+    pub dbus: DBusConf,
+}
+
+/// Notification configuration.
+///
+/// This struct is part of the main [`Conf`] struct.
+#[derive(Debug, PartialEq, Eq, Clone, serde::Deserialize)]
+pub struct NotificationConf {
     /// Whether notifications are enabled.
     ///
     /// Default: `true`.
-    pub notifications_enabled: bool,
+    pub enabled: bool,
 
     /// Notifications to be sent at specified durations before the timeout ends.
     ///
     /// Default: `[5m, 1m, 30s, 10s]`.
     #[serde(deserialize_with = "humantime_serde_duration::deserialize_vec")]
-    pub notifications_at: Vec<Duration>,
-
-    /// D-Bus related configuration.
-    pub dbus: DBusConf,
+    pub at: Vec<Duration>,
 }
 
 /// D-Bus related configuration.
@@ -99,13 +108,15 @@ impl Default for Conf {
     fn default() -> Self {
         Self {
             timeout: Duration::from_mins(5),
-            notifications_enabled: true,
-            notifications_at: vec![
-                Duration::from_mins(5),
-                Duration::from_mins(1),
-                Duration::from_secs(30),
-                Duration::from_secs(10),
-            ],
+            notifications: NotificationConf {
+                enabled: true,
+                at: vec![
+                    Duration::from_mins(5),
+                    Duration::from_mins(1),
+                    Duration::from_secs(30),
+                    Duration::from_secs(10),
+                ],
+            },
             dbus: DBusConf {
                 service: "org.bluez".to_string(),
                 adapter_iface: "org.bluez.Adapter1".to_string(),

@@ -1,11 +1,12 @@
 timeout: 5m
 
-notifications_enabled: true
-notifications_at:
-- 5m
-- 1m
-- 30s
-- 10s
+notifications:
+  enabled: true
+  at:
+  - 5m
+  - 1m
+  - 30s
+  - 10s
 
 dbus:
   service: org.bluez

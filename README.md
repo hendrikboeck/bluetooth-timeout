@@ -4,7 +4,7 @@
     <img src="https://raw.githubusercontent.com/hendrikboeck/bluetooth-timeout/main/.github/md/icon_x1024.png" alt="Logo" width="128" height="128">
 </a>
 
-<h1 align="center">bluetooth-timeout <code>v0.1.2</code></h1>
+<h1 align="center">bluetooth-timeout <code>v0.1.3</code></h1>
 
 <p align="center">
     Bluetooth Timeout Daemon for Linux <i>(written in Rust, btw.)</i>
@@ -67,12 +67,13 @@ You can modify the timeout duration (in seconds) in [contrib/config.yml](contrib
 ```yaml
 timeout: 5m
 
-notifications_enabled: true
-notifications_at:
-  - 5m
-  - 1m
-  - 30s
-  - 10s
+notifications:
+  enabled: true
+  at:
+    - 5m
+    - 1m
+    - 30s
+    - 10s
 
 dbus:
   service: org.bluez
