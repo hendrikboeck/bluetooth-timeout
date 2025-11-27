@@ -4,24 +4,32 @@
     <img src="https://raw.githubusercontent.com/hendrikboeck/bluetooth-timeout/main/.github/md/icon_x1024.png" alt="Logo" width="128" height="128">
 </a>
 
-<h1 align="center">bluetooth-timeout <code>v0.1.1</code></h1>
+<h1 align="center">bluetooth-timeout <code>v0.1.2</code></h1>
 
 <p align="center">
     Bluetooth Timeout Daemon for Linux <i>(written in Rust, btw.)</i>
 </p>
 </div>
 
+## Table of Contents
+
+- [Description](#description)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Logging](#logging)
+- [Development](#development)
+
+## Description
+
 `bluetooth-timeout` is a lightweight Rust daemon for Linux that automatically turns off your Bluetooth adapter after a configurable period of inactivity (i.e., when the adapter is powered on but no devices are connected).
 
-It integrates with the system D-Bus to monitor Bluetooth state and sends desktop notifications to warn you before the adapter is disabled.
+It integrates with the system D-Bus to monitor Bluetooth state (adapter on/off, device connect/disconnect) and uses that signal stream to reset or cancel the shutdown timer immediately. Before disabling the adapter, it sends desktop notifications (5m, 1m, 30s, etc.).
 
-## Features
+Internally, the service is built on `tokio`’s async runtime: when there are no relevant Bluetooth D-Bus events coming in, the async tasks simply park. Under the hood this means the threads are suspended by the OS event loop (`epoll`) until a matching D-Bus signal arrives, so the daemon is effectively idle, basically near-zero CPU/power usage, with only a small, steady RAM footprint (~12M).
 
-- **Automatic Power Saving**: Turns off Bluetooth if no devices are connected for a set duration.
-- **Smart Monitoring**: Listens for D-Bus signals (Adapter On/Off, Device Connect/Disconnect) to reset or cancel timers immediately.
-- **Desktop Notifications**: Sends warnings at 5 minutes, 1 minute, 30 seconds, and 10 seconds before timeout.
-- **Systemd Integration**: Runs as a user-level systemd service.
-- **Configurable**: YAML-based configuration for timeout duration and D-Bus paths.
+It’s designed to run as a user-level `systemd` service and is configured via a simple YAML file (timeout duration, notification behavior, and D-Bus paths).
 
 ## Prerequisites
 
@@ -96,8 +104,6 @@ Once installed, the service runs automatically in the background. You can manage
 
 ## Logging
 
-Logs are handled by [`src/log.rs`](src/log.rs).
-
 - **Stdout**: Logs are printed to stdout, which `systemd` captures. View them with `just logs`.
 - **File**:
   - **Release mode**: Logs are written to `~/.local/share/bluetooth-timeout/bluetooth-timeout.log`.
@@ -111,12 +117,5 @@ To run the project locally in debug mode:
 cargo run
 ```
 
-In debug mode, the configuration is read from [`config.yml`](config.yml) in the current directory instead of the XDG config path.
+In debug mode, the configuration is read from [`constrib/config.yml`](contrib/config.yml) in the current directory instead of the XDG config path.
 
-## Project Structure
-
-- [`src/main.rs`](src/main.rs): Entry point.
-- [`src/bluetooth/observer.rs`](src/bluetooth/observer.rs): Monitors D-Bus for signals (InterfaceAdded, PropertiesChanged).
-- [`src/bluetooth/service.rs`](src/bluetooth/service.rs): State machine logic (Idle vs Running).
-- [`src/timeout.rs`](src/timeout.rs): Handles the countdown timer and desktop notifications.
-- [`contrib/bluetooth-timeout.service`](contrib/bluetooth-timeout.service): Systemd unit file.
