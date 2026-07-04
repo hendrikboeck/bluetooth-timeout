@@ -3,7 +3,6 @@ use std::sync::OnceLock;
 use std::{fs, time::Duration};
 
 // -- crate imports (conditional)
-// for some reason, this is flagged as unused
 #[cfg(not(debug_assertions))]
 #[allow(unused_imports)]
 use anyhow::Context;
@@ -13,23 +12,23 @@ use anyhow::Result;
 use tracing::{info, warn};
 
 // -- module imports
-use crate::serde_ext::humantime_serde_duration;
+use crate::lua_config;
 
 /// Global singleton instance of [`Conf`].
 static CONF: OnceLock<Conf> = OnceLock::new();
 
 /// Returns the path to the configuration file.
 ///
-/// In debug builds this is `./contrib/config.yml` in the current working directory. In release
+/// In debug builds this is `./contrib/config.lua` in the current working directory. In release
 /// builds this uses the XDG base directory and resolves to a path like
-/// `~/.config/bluetooth-timeout/config.yml`.
+/// `~/.config/bluetooth-timeout/config.lua`.
 ///
 /// # Errors
 /// - [`anyhow::Error`] if the config file path cannot be determined (release builds only).
 pub fn conf_filepath() -> Result<String> {
     #[cfg(debug_assertions)]
     {
-        Ok("./contrib/config.yml".into())
+        Ok("./contrib/config.lua".into())
     }
 
     #[cfg(not(debug_assertions))]
@@ -37,34 +36,34 @@ pub fn conf_filepath() -> Result<String> {
         const APP_ID: &str = env!("CARGO_PKG_NAME");
 
         xdg::BaseDirectories::with_prefix(APP_ID)
-            .get_config_file("config.yml")
+            .get_config_file("config.lua")
             .map(|path| path.to_string_lossy().to_string())
             .context("Could not determine config file path")
     }
 }
 
 /// Application configuration.
-///
-/// This type is deserialized from a YAML config file and also provides built-in defaults.
-#[derive(Debug, PartialEq, Eq, Clone, serde::Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Conf {
     /// Number of seconds before a timeout is triggered.
     ///
-    /// Default: `5m1s`.
-    #[serde(deserialize_with = "humantime_serde_duration::deserialize")]
+    /// Default: `5m`.
     pub timeout: Duration,
 
     /// Notification configuration.
     pub notifications: NotificationConf,
 
-    /// D-Bus related configuration.
-    pub dbus: DBusConf,
+    /// Runtime configuration.
+    pub runtime: RuntimeConf,
+
+    /// D-Bus object paths of the Bluetooth adapters to manage.
+    ///
+    /// Default: `["/org/bluez/hci0"]`.
+    pub adapter_paths: Vec<String>,
 }
 
 /// Notification configuration.
-///
-/// This struct is part of the main [`Conf`] struct.
-#[derive(Debug, PartialEq, Eq, Clone, serde::Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct NotificationConf {
     /// Whether notifications are enabled.
     ///
@@ -74,67 +73,59 @@ pub struct NotificationConf {
     /// Notifications to be sent at specified durations before the timeout ends.
     ///
     /// Default: `[5m, 1m, 30s, 10s]`.
-    #[serde(deserialize_with = "humantime_serde_duration::deserialize_vec")]
     pub at: Vec<Duration>,
 }
 
-/// D-Bus related configuration.
-///
-/// This struct is part of the main [`Conf`] struct.
-#[derive(Debug, PartialEq, Eq, Clone, serde::Deserialize)]
-pub struct DBusConf {
-    /// D-Bus service name (usually "org.bluez").
+/// Runtime configuration.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct RuntimeConf {
+    /// Whether to use a multi-threaded runtime.
     ///
-    /// Default: "org.bluez".
-    pub service: String,
+    /// Default: `false`.
+    pub multithreaded: bool,
+}
 
-    /// D-Bus interface name for Bluetooth adapters.
-    ///
-    /// Default: "org.bluez.Adapter1".
-    pub adapter_iface: String,
+impl Default for NotificationConf {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            at: vec![
+                Duration::from_mins(5),
+                Duration::from_mins(1),
+                Duration::from_secs(30),
+                Duration::from_secs(10),
+            ],
+        }
+    }
+}
 
-    /// D-Bus object path for the Bluetooth adapter to manage.
-    ///
-    /// Default: "/org/bluez/hci0".
-    pub adapter_path: String,
-
-    /// D-Bus interface name for Bluetooth devices.
-    ///
-    /// Default: "org.bluez.Device1".
-    pub device_iface: String,
+impl Default for RuntimeConf {
+    fn default() -> Self {
+        Self {
+            multithreaded: false,
+        }
+    }
 }
 
 impl Default for Conf {
     fn default() -> Self {
         Self {
             timeout: Duration::from_mins(5),
-            notifications: NotificationConf {
-                enabled: true,
-                at: vec![
-                    Duration::from_mins(5),
-                    Duration::from_mins(1),
-                    Duration::from_secs(30),
-                    Duration::from_secs(10),
-                ],
-            },
-            dbus: DBusConf {
-                service: "org.bluez".to_string(),
-                adapter_iface: "org.bluez.Adapter1".to_string(),
-                device_iface: "org.bluez.Device1".to_string(),
-                adapter_path: "/org/bluez/hci0".to_string(),
-            },
+            notifications: NotificationConf::default(),
+            runtime: RuntimeConf::default(),
+            adapter_paths: vec!["/org/bluez/hci0".to_string()],
         }
     }
 }
 
 impl Conf {
-    /// Loads the configuration from [`conf_filepath`] into the global instance.
+    /// Loads the configuration from the Lua config file into the global instance.
     ///
     /// If the path cannot be determined or the file cannot be read or parsed, falls back to
     /// [`Conf::instance`], which uses the default configuration.
-    pub fn load() -> &'static Self {
+    pub async fn load() -> &'static Self {
         match conf_filepath() {
-            Ok(p) => Self::from_file(&p),
+            Ok(p) => Self::from_file(&p).await,
             Err(e) => {
                 warn!(
                     "Could not determine config file path: {}. Falling back to defaults.",
@@ -145,11 +136,11 @@ impl Conf {
         }
     }
 
-    /// Initializes the global configuration from the YAML file at `path`.
+    /// Initializes the global configuration from the Lua file at `path`.
     ///
     /// If the configuration is already initialized, the existing instance is returned and the file
     /// is ignored. On any read or parse error, falls back to [`Conf::default`].
-    pub fn from_file(path: &str) -> &'static Self {
+    pub async fn from_file(path: &str) -> &'static Self {
         if let Some(conf) = CONF.get() {
             warn!(
                 "Conf::from_file({}) called, but configuration is already initialized. Using \
@@ -159,27 +150,40 @@ impl Conf {
             return conf;
         }
 
-        CONF.get_or_init(|| {
-            fs::read_to_string(path)
-                .map_err(|e| {
-                    warn!(
-                        "Could not read config file '{}': {}. Falling back to defaults.",
-                        path, e
-                    );
-                })
-                .and_then(|contents| {
-                    serde_yaml::from_str::<Conf>(&contents).map_err(|e| {
-                        warn!(
-                            "Could not parse config file '{}': {}. Falling back to defaults.",
-                            path, e
-                        );
-                    })
-                })
-                .map(|conf| {
-                    info!("Successfully loaded configuration from '{}'.", path);
-                    conf
-                })
-                .unwrap_or_else(|_| Conf::default())
+        let contents = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!(
+                    "Could not read config file '{}': {}. Falling back to defaults.",
+                    path, e
+                );
+                return Self::instance();
+            }
+        };
+
+        let adapters = match lua_config::discover_adapters().await {
+            Ok(a) => a,
+            Err(e) => {
+                warn!(
+                    "Could not discover Bluetooth adapters: {}. Continuing with empty adapter list.",
+                    e
+                );
+                vec![]
+            }
+        };
+
+        CONF.get_or_init(|| match lua_config::load_config(&contents, &adapters) {
+            Ok(conf) => {
+                info!("Successfully loaded configuration from '{}'.", path);
+                conf
+            }
+            Err(e) => {
+                warn!(
+                    "Could not parse config file '{}': {}. Falling back to defaults.",
+                    path, e
+                );
+                Conf::default()
+            }
         })
     }
 

@@ -4,7 +4,7 @@
     <img src="https://raw.githubusercontent.com/hendrikboeck/bluetooth-timeout/main/.github/md/icon_x1024.png" alt="Logo" width="128" height="128">
 </a>
 
-<h1 align="center">bluetooth-timeout <code>v0.1.3</code></h1>
+<h1 align="center">bluetooth-timeout <code>v0.2.0</code></h1>
 
 <p align="center">
     Bluetooth Timeout Daemon for Linux <i>(written in Rust, btw.)</i>
@@ -27,9 +27,9 @@
 
 It integrates with the system D-Bus to monitor Bluetooth state (adapter on/off, device connect/disconnect) and uses that signal stream to reset or cancel the shutdown timer immediately. Before disabling the adapter, it sends desktop notifications (5m, 1m, 30s, etc.).
 
-Internally, the service is built on `tokio`’s async runtime: when there are no relevant Bluetooth D-Bus events coming in, the async tasks simply park. Under the hood this means the threads are suspended by the OS event loop (`epoll`) until a matching D-Bus signal arrives, so the daemon is effectively idle, basically near-zero CPU/power usage, with only a small, steady RAM footprint (~12M).
+Internally, the service is built on `tokio`'s async runtime: when there are no relevant Bluetooth D-Bus events coming in, the async tasks simply park. Under the hood this means the threads are suspended by the OS event loop (`epoll`) until a matching D-Bus signal arrives, so the daemon is effectively idle, basically near-zero CPU/power usage, with only a small, steady RAM footprint (~10M).
 
-It’s designed to run as a user-level `systemd` service and is configured via a simple YAML file (timeout duration, notification behavior, and D-Bus paths).
+It manages all Bluetooth adapters by default (filters can be applied in config). Designed as a user-level `systemd` service, configured via a Lua script.
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ The project uses a [Justfile](Justfile) to automate building and installation.
     ```
 
 2.  **Install using Just:**
-    This command builds the release binary, installs it to `~/.local/bin`, copies the service file to `~/.config/systemd/user`, and enables the service.
+    This command builds the release binary, installs it to `~/.local/bin`, copies config files and the systemd service unit, and enables the service.
 
     ```sh
     just install
@@ -60,35 +60,69 @@ The project uses a [Justfile](Justfile) to automate building and installation.
 
 ## Configuration
 
-The configuration file is located at `~/.config/bluetooth-timeout/config.yml` (created automatically during installation with `just install`).
+Configuration is written in **Lua** at `~/.config/bluetooth-timeout/config.lua`. LSP type annotations are provided in a separate `types.lua` file (discovered via `.luarc.json`).
 
-You can modify the timeout duration (in seconds) in [contrib/config.yml](contrib/config.yml):
+`just install` copies all three files to `~/.config/bluetooth-timeout/` if they don't already exist.
 
-```yaml
-timeout: 5m
+### Example
 
-notifications:
-  enabled: true
-  at:
-    - 5m
-    - 1m
-    - 30s
-    - 10s
+```lua
+---@type BluetoothTimeoutConfig
+local M = {}
 
-dbus:
-  service: org.bluez
-  adapter_iface: org.bluez.Adapter1
-  adapter_path: /org/bluez/hci0
-  device_iface: org.bluez.Device1
+M.timeout = "5m"
+
+-- Auto-discover all Bluetooth adapters
+M.adapters = find_adapters()
+
+-- Or filter: only powered adapters
+-- M.adapters = find_adapters { powered = true }
+
+-- Or hardcode specific adapters
+-- M.adapters = { { path = "/org/bluez/hci0" } }
+
+M.notifications = {
+  enabled = true,
+  at = { "5m", "1m", "30s", "10s" },
+}
+
+M.runtime = {
+  multithreaded = false,
+}
+
+return M
 ```
 
-`just install` copies this file to the appropriate XDG config directory if it doesn't already exist (does not check backwards compatibility). To manually overwrite the config file, you can copy it yourself (e.g.):
+### Adapter Discovery
 
-```sh
-cp contrib/config.yml $XDG_CONFIG_HOME/bluetooth-timeout/config.yml
-```
+The `find_adapters()` function discovers Bluetooth adapters via D-Bus at config-load time. It returns an array of adapter objects with the following fields:
 
-See [`src/configuration.rs`](src/configuration.rs) for implementation details.
+| Field          | Type    | Description                             |
+| :------------- | :------ | :-------------------------------------- |
+| `path`         | string  | D-Bus object path (`/org/bluez/hci0`)   |
+| `address`      | string  | MAC address (`00:1A:7D:DA:71:13`)       |
+| `name`         | string  | Adapter alias / display name            |
+| `powered`      | boolean | Whether the adapter is currently on     |
+| `discoverable` | boolean | Whether the adapter is discoverable     |
+
+An optional filter table can be passed to narrow results:
+
+| Filter             | Type    | Description                     |
+| :----------------- | :------ | :------------------------------ |
+| `name`             | string  | Exact match on adapter name     |
+| `name_pattern`     | string  | Lua pattern match on name       |
+| `address`          | string  | Exact MAC address match         |
+| `address_prefix`   | string  | MAC address prefix match        |
+| `powered`          | boolean | Filter by powered state         |
+| `discoverable`     | boolean | Filter by discoverable state    |
+
+### Runtime
+
+| Setting          | Default | Description                                                                 |
+| :--------------- | :------ | :-------------------------------------------------------------------------- |
+| `multithreaded`  | `false` | `false`: single-threaded (ideal for 1-2 adapters). `true`: multi-threaded (3+ adapters). |
+
+See [`contrib/config.lua`](contrib/config.lua) for the full annotated template and [`src/configuration.rs`](src/configuration.rs) for implementation details.
 
 ## Usage
 
@@ -118,5 +152,4 @@ To run the project locally in debug mode:
 cargo run
 ```
 
-In debug mode, the configuration is read from [`contrib/config.yml`](contrib/config.yml) in the current directory instead of the XDG config path.
-
+In debug mode, the configuration is read from [`contrib/config.lua`](contrib/config.lua) in the current directory instead of the XDG config path.

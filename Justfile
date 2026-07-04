@@ -3,6 +3,7 @@ BIN_NAME := "bluetooth-timeout"
 SERVICE_NAME := "bluetooth-timeout.service"
 INSTALL_DIR := "$HOME/.local/bin"
 SYSTEMD_USER_DIR := "$HOME/.config/systemd/user"
+CONFIG_DIR := "$HOME/.config/" + BIN_NAME
 
 default: build
 
@@ -21,10 +22,16 @@ install: build
     # Shutdown existing service if running
     systemctl --user disable --now {{SERVICE_NAME}} || true
 
-    # copy config file if it does not exist
-    if [ ! -f "$HOME/.config/{{BIN_NAME}}/config.yml" ]; then \
-        mkdir -p "$HOME/.config/{{BIN_NAME}}"; \
-        cp contrib/config.yml "$HOME/.config/{{BIN_NAME}}/config.yml"; \
+    # Copy config files if they do not exist
+    mkdir -p "{{CONFIG_DIR}}"
+    if [ ! -f "{{CONFIG_DIR}}/config.lua" ]; then \
+        cp contrib/config.lua "{{CONFIG_DIR}}/config.lua"; \
+    fi
+    if [ ! -f "{{CONFIG_DIR}}/types.lua" ]; then \
+        cp contrib/types.lua "{{CONFIG_DIR}}/types.lua"; \
+    fi
+    if [ ! -f "{{CONFIG_DIR}}/.luarc.json" ]; then \
+        cp contrib/.luarc.json "{{CONFIG_DIR}}/.luarc.json"; \
     fi
 
     # Install binary

@@ -1,14 +1,12 @@
 // -- crate imports
 use anyhow::Result;
-use zbus::{
-    Connection,
-    fdo::{ObjectManagerProxy, PropertiesProxy},
-    names::InterfaceName,
-    zvariant::Value,
-};
+use zbus::{Connection, names::InterfaceName, zvariant::Value};
 
 // -- module imports
-use crate::{bluetooth::device::BluetoothDevice, configuration::Conf};
+use crate::bluetooth::{
+    constants::{BLUEZ_ADAPTER_IFACE, BLUEZ_DEVICE_IFACE, BLUEZ_SERVICE},
+    device::BluetoothDevice,
+};
 
 /// A proxy for interacting with the Bluetooth service via D-Bus.
 ///
@@ -57,16 +55,15 @@ impl BluetoothServiceProxy {
     ///
     /// - [`anyhow::Error`] if the D-Bus call fails or the property cannot be retrieved.
     pub async fn is_powered(&self) -> Result<bool> {
-        let conf = Conf::instance();
-        let proxy = PropertiesProxy::builder(&self.conn)
-            .destination(conf.dbus.service.as_str())?
+        let proxy = zbus::fdo::PropertiesProxy::builder(&self.conn)
+            .destination(BLUEZ_SERVICE)?
             .path(self.iface.as_str())?
             .build()
             .await?;
 
         let powered = proxy
             .get(
-                InterfaceName::from_static_str(conf.dbus.adapter_iface.as_str())?,
+                InterfaceName::from_static_str(BLUEZ_ADAPTER_IFACE)?,
                 "Powered",
             )
             .await?
@@ -89,9 +86,8 @@ impl BluetoothServiceProxy {
     ///
     /// - [`anyhow::Error`] if the D-Bus call fails or the objects cannot be retrieved.
     pub async fn get_devices(&self) -> Result<Vec<BluetoothDevice>> {
-        let conf = Conf::instance();
-        let proxy = ObjectManagerProxy::builder(&self.conn)
-            .destination(conf.dbus.service.as_str())?
+        let proxy = zbus::fdo::ObjectManagerProxy::builder(&self.conn)
+            .destination(BLUEZ_SERVICE)?
             .path("/")?
             .build()
             .await?;
@@ -100,7 +96,7 @@ impl BluetoothServiceProxy {
         let mut devices = vec![];
 
         for (path, ifaces) in objects {
-            let props = match ifaces.get(conf.dbus.device_iface.as_str()) {
+            let props = match ifaces.get(BLUEZ_DEVICE_IFACE) {
                 Some(p) => p,
                 None => continue,
             };
@@ -139,16 +135,15 @@ impl BluetoothServiceProxy {
     ///
     /// - [`anyhow::Error`] if the D-Bus call fails or the property cannot be set.
     pub async fn turn_off_adapter(&self) -> Result<()> {
-        let conf = Conf::instance();
-        let proxy = PropertiesProxy::builder(&self.conn)
-            .destination(conf.dbus.service.as_str())?
+        let proxy = zbus::fdo::PropertiesProxy::builder(&self.conn)
+            .destination(BLUEZ_SERVICE)?
             .path(self.iface.as_str())?
             .build()
             .await?;
 
         proxy
             .set(
-                InterfaceName::from_static_str(conf.dbus.adapter_iface.as_str())?,
+                InterfaceName::from_static_str(BLUEZ_ADAPTER_IFACE)?,
                 "Powered",
                 Value::Bool(false),
             )

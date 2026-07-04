@@ -1,8 +1,5 @@
-// -- crate imports
-use serde::{Deserialize, Serialize};
-
 /// Represents a Bluetooth device with its relevant properties.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BluetoothDevice {
     /// The D-Bus object path of the Bluetooth device.
     pub object_path: String,
