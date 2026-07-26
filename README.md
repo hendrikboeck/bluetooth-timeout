@@ -4,7 +4,7 @@
     <img src="https://raw.githubusercontent.com/hendrikboeck/bluetooth-timeout/main/.github/md/icon_x1024.png" alt="Logo" width="128" height="128">
 </a>
 
-<h1 align="center">bluetooth-timeout <code>v0.2.0</code></h1>
+<h1 align="center">bluetooth-timeout <code>v0.2.1</code></h1>
 
 <p align="center">
     Bluetooth Timeout Daemon for Linux <i>(written in Rust, btw.)</i>
