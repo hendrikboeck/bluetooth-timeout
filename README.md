@@ -57,10 +57,13 @@ The project uses a [Justfile](Justfile) to automate building and installation.
     ```
 
 2.  **Install using Just:**
-    This command builds the release binary, installs it to `~/.local/bin`, runs the migration (creates config + LSP files), and enables the systemd service.
+    This command builds the release binary, installs it to `~/.local/bin`, handles configuration (prompts if config exists), and enables the systemd service.
 
     ```sh
-    just install
+    just install                                    # interactive (prompts for migration + config)
+    just install --migrate                          # non-interactive migration
+    just install --migrate --skip-config            # run migration, skip if config exists
+    just install --migrate --overwrite-config       # run migration, overwrite config
     ```
 
     _Note: The build process temporarily moves `.cargo/config.toml` to avoid conflicts with unstable Tokio flags during release builds._
@@ -154,20 +157,22 @@ Once installed, the service runs automatically in the background. You can manage
 
 | Action           | Just Command     | Systemd Command                                      |
 | :--------------- | :--------------- | :--------------------------------------------------- |
-| **Install**      | `just install`   | _(See Installation steps above)_                     |
-| **Migrate**      | `just migrate`   | `bluetooth-timeout migrate`                          |
-| **Check Status** | `just status`    | `systemctl --user status bluetooth-timeout.service`  |
-| **View Logs**    | `just logs`      | `journalctl --user -u bluetooth-timeout.service -f`  |
-| **Restart**      | `just restart`   | `systemctl --user restart bluetooth-timeout.service` |
-| **Stop**         | `just stop`      | `systemctl --user stop bluetooth-timeout.service`    |
-| **Uninstall**    | `just uninstall` | _(See Justfile for cleanup steps)_                   |
+    | **Install**      | `just install`   | _(See Installation steps above)_                     |
+    | **Migrate**      | `just migrate`   | `bluetooth-timeout migrate`                          |
+    | **Check Status** | `just status`    | `systemctl --user status bluetooth-timeout.service`  |
+    | **View Logs**    | `just logs`      | `journalctl --user -u bluetooth-timeout.service -f`  |
+    | **Restart**      | `just restart`   | `systemctl --user restart bluetooth-timeout.service` |
+    | **Stop**         | `just stop`      | `systemctl --user stop bluetooth-timeout.service`    |
+    | **Uninstall**    | `just uninstall` | _(See Justfile for cleanup steps)_                   |
+
+The install script at [`contrib/scripts/install.sh`](contrib/scripts/install.sh) can also be run directly with `--skip-config`, `--keep-config`, or `--overwrite-config`.
 
 ## Logging
 
 - **Stdout**: Logs are printed to stdout, which `systemd` captures. View them with `just logs`.
 - **File**:
   - **Release mode**: Logs are written to `~/.local/share/bluetooth-timeout/bluetooth-timeout.log`.
-  - **Debug mode**: Logs are written to `bluetooth-timeout.log` in the project directory.
+  - **Debug mode**: Logs are written to `.local/share/bluetooth-timeout.log` (relative to working directory).
 
 ## Development
 
@@ -177,4 +182,16 @@ To run the project locally in debug mode:
 cargo run
 ```
 
-In debug mode, the configuration is read from [`contrib/config/v2.0/config.lua`](contrib/config/v2.0/config.lua) in the current directory instead of the XDG config path.
+In debug mode, configuration is read from `.local/config/config.lua` and logs are written to `.local/share/bluetooth-timeout.log`. Run `cargo run -- migrate` to generate a fresh config from defaults.
+
+Verbosity flags are available in debug builds only:
+
+| Flag       | Effect                      |
+| :--------- | :-------------------------- |
+| _(none)_   | Default log level (`INFO`)  |
+| `-v`       | `DEBUG` log level           |
+| `-vv`      | `TRACE` log level           |
+
+```sh
+cargo run -- -vv
+```

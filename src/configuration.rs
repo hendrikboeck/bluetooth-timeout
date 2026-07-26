@@ -26,7 +26,7 @@ pub const VERSION_MINOR: u32 = 0;
 
 /// Returns the path to the configuration directory.
 ///
-/// In debug builds this is `./contrib`. In release builds this uses the XDG base directory and
+/// In debug builds this is `.local/config`. In release builds this uses the XDG base directory and
 /// resolves to `~/.config/bluetooth-timeout`.
 ///
 /// # Errors
@@ -41,9 +41,8 @@ pub fn conf_dirpath() -> Result<PathBuf> {
 
 /// Returns the path to the configuration file.
 ///
-/// In debug builds this is `./contrib/config.lua` in the current working directory. In release
-/// builds this uses the XDG base directory and resolves to a path like
-/// `~/.config/bluetooth-timeout/config.lua`.
+/// In debug builds this is `.local/config/config.lua`. In release builds this uses the XDG base
+/// directory and resolves to a path like `~/.config/bluetooth-timeout/config.lua`.
 ///
 /// # Errors
 /// - [`anyhow::Error`] if the config file path cannot be determined (release builds only).
@@ -51,7 +50,7 @@ pub fn conf_dirpath() -> Result<PathBuf> {
 pub fn conf_filepath() -> Result<String> {
     #[cfg(debug_assertions)]
     {
-        Ok("./contrib/config.lua".into())
+        Ok(".local/config/config.lua".into())
     }
 
     #[cfg(not(debug_assertions))]

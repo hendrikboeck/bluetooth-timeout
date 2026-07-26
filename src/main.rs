@@ -23,7 +23,11 @@ mod timeout;
 
 // -- crate imports
 use clap::{Parser, Subcommand};
+#[cfg(debug_assertions)]
+use clap::ArgAction;
 use tracing::{debug, error, info};
+#[cfg(debug_assertions)]
+use tracing_subscriber::filter::LevelFilter;
 
 // -- module imports
 use crate::{
@@ -39,6 +43,11 @@ use crate::{
     version
 )]
 struct Cli {
+    /// Increase logging verbosity: -v = DEBUG, -vv = TRACE.
+    #[cfg(debug_assertions)]
+    #[arg(short = 'v', long = "verbose", action = ArgAction::Count, global = true)]
+    verbose: u8,
+
     /// Optional subcommand (migrate, or none to run the daemon).
     #[command(subcommand)]
     command: Option<Commands>,
@@ -55,6 +64,17 @@ enum Commands {
 /// or runs the daemon.
 fn main() {
     let cli = Cli::parse();
+    #[cfg(debug_assertions)]
+    let verbosity = match cli.verbose {
+        0 => None,
+        1 => Some(LevelFilter::DEBUG),
+        _ => Some(LevelFilter::TRACE),
+    };
+    #[cfg(not(debug_assertions))]
+    let verbosity = None;
+
+    log::init_tracing(verbosity).expect("Could not initialize tracing");
+    debug!("Tracing initialized");
 
     match cli.command {
         Some(Commands::Migrate) => {
@@ -78,18 +98,16 @@ fn run_migrate() -> anyhow::Result<()> {
 
     match result {
         migration::MigrationResult::UpToDate => {
-            println!(
-                "Configuration is already up to date (version {VERSION_MAJOR}.{VERSION_MINOR})."
-            );
+            info!("Configuration is already up to date (version {VERSION_MAJOR}.{VERSION_MINOR}).");
         }
         migration::MigrationResult::Migrated {
             from_version,
             to_version,
         } => {
-            println!("Migrated configuration from version {from_version} to version {to_version}.");
+            info!("Migrated configuration from version {from_version} to version {to_version}.");
         }
         migration::MigrationResult::Created => {
-            println!(
+            info!(
                 "Created new configuration at {}",
                 config_dir.join("config.lua").display()
             );
@@ -102,9 +120,6 @@ fn run_migrate() -> anyhow::Result<()> {
 /// Initialises tracing, loads configuration, performs version compatibility
 /// checks, and starts the async event loop.
 fn run_daemon() {
-    log::init_tracing().expect("Could not initialize tracing");
-    debug!("Tracing initialized");
-
     let bootstrap_rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

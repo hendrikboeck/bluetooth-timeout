@@ -1,7 +1,3 @@
-// -- std imports (conditional)
-#[cfg(debug_assertions)]
-use std::fs;
-
 // -- std imports
 use std::{path::PathBuf, sync::OnceLock};
 
@@ -13,7 +9,7 @@ use console_subscriber::ConsoleLayer;
 use anyhow::{Context, Result};
 use tracing::warn;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
-use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*, registry::Registry};
+use tracing_subscriber::{filter::{LevelFilter, Targets}, fmt, prelude::*, registry::Registry};
 
 /// Global guard that keeps the non-blocking file writer alive.
 ///
@@ -24,18 +20,13 @@ static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 /// Name of the log file created by the application.
 const LOG_FILE_NAME: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
 
-/// Log level used in debug builds.
-#[cfg(debug_assertions)]
-const LOG_LEVEL: LevelFilter = LevelFilter::DEBUG;
-
-/// Log level used in release builds.
-#[cfg(not(debug_assertions))]
+/// Default log level.
 const LOG_LEVEL: LevelFilter = LevelFilter::INFO;
 
 /// Returns the path to the log file used by the application.
 ///
-/// In debug builds this is `./bluetooth-timeout.log`. In release builds this uses the XDG data
-/// directory.
+/// In debug builds this is `.local/share/bluetooth-timeout.log`. In release builds this uses the
+/// XDG data directory.
 ///
 /// # Errors
 /// - [`anyhow::Error`] if the XDG data directory cannot be used or created. (!release builds only)
@@ -43,8 +34,9 @@ const LOG_LEVEL: LevelFilter = LevelFilter::INFO;
 pub fn log_filepath() -> Result<PathBuf> {
     #[cfg(debug_assertions)]
     {
-        let path = PathBuf::from(LOG_FILE_NAME);
-        let _ = fs::remove_file(&path);
+        let dir = PathBuf::from(".local/share");
+        std::fs::create_dir_all(&dir).ok();
+        let path = dir.join(LOG_FILE_NAME);
         Ok(path)
     }
 
@@ -90,7 +82,12 @@ fn build_file_writer() -> Result<NonBlocking> {
 ///
 /// # Errors
 /// - [`anyhow::Error`] if the global tracing subscriber cannot be installed.
-pub fn init_tracing() -> Result<()> {
+pub fn init_tracing(override_level: Option<LevelFilter>) -> Result<()> {
+    let level = override_level.unwrap_or(LOG_LEVEL);
+    let filter = Targets::new()
+        .with_default(LevelFilter::INFO)
+        .with_target(env!("CARGO_PKG_NAME").replace('-', "_"), level);
+
     #[cfg(debug_assertions)]
     let stdout_layer = fmt::layer()
         // .pretty()
@@ -99,14 +96,14 @@ pub fn init_tracing() -> Result<()> {
         .with_file(true)
         .with_line_number(true)
         .with_target(false)
-        .with_filter(LOG_LEVEL);
+        .with_filter(filter.clone());
 
     #[cfg(not(debug_assertions))]
     let stdout_layer = fmt::layer()
         .with_thread_ids(true)
         // .with_thread_names(true)
         .with_target(false)
-        .with_filter(LOG_LEVEL);
+        .with_filter(filter.clone());
 
     match build_file_writer() {
         Ok(writer) => {
@@ -120,7 +117,7 @@ pub fn init_tracing() -> Result<()> {
                 .with_target(false)
                 .with_ansi(false)
                 .with_writer(writer)
-                .with_filter(LOG_LEVEL);
+                .with_filter(filter.clone());
 
             #[cfg(not(debug_assertions))]
             let file_layer = fmt::layer()
@@ -129,7 +126,7 @@ pub fn init_tracing() -> Result<()> {
                 .with_ansi(false)
                 .with_writer(writer)
                 .with_target(false)
-                .with_filter(LOG_LEVEL);
+                .with_filter(filter.clone());
 
             #[cfg(all(debug_assertions, feature = "tokio-console"))]
             let subscriber = Registry::default()
