@@ -1,6 +1,6 @@
 [package]
 name = "bluetooth-timeout"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Automatically powers off idle Bluetooth adapters after a configurable inactivity timeout"
 license = "MIT"
@@ -10,15 +10,15 @@ keywords = ["bluetooth", "timeout", "daemon", "bluez", "dbus"]
 categories = ["command-line-utilities", "hardware-support"]
 
 [dependencies]
-anyhow = "1.0.103"
-clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0.104"
+clap = { version = "4.6.4", features = ["derive"] }
 console-subscriber = { version = "0.5.0", optional = true }
-futures-util = "0.3.32"
+futures-util = "0.3.33"
 humantime = "2.4.0"
-mlua = { version = "0.11.6", features = ["lua54", "vendored", "send"] }
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-tokio = { version = "1.52.3", features = [
+mlua = { version = "0.12.0", features = ["lua54", "vendored", "send"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_yaml = "0.9.34+deprecated"
+tokio = { version = "1.53.1", features = [
     "macros",
     "rt-multi-thread",
     "time",
@@ -28,10 +28,13 @@ tracing = { version = "0.1.44", features = ["release_max_level_info"] }
 tracing-appender = "0.2.5"
 tracing-subscriber = "0.3.23"
 xdg = "3.0.0"
-zbus = { version = "5.16.0", features = ["tokio"] }
+zbus = { version = "5.18.0", features = ["tokio"] }
 
 [features]
 tokio-console = ["dep:console-subscriber"]
 
-[lints.clippy]
-multiple_crate_versions = "allow"
+[profile.release]
+opt-level = "z"   # optimize for size (like ReleaseSmall)
+lto = true        # link-time optimization
+codegen-units = 1 # single codegen unit, better LTO
+strip = true      # strip debug symbols
