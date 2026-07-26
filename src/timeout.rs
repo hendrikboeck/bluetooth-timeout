@@ -7,21 +7,25 @@ use tracing::{error, info, warn};
 
 // -- module imports
 use crate::{
-    bluetooth::service_proxy::BluetoothServiceProxy, configuration::Conf,
-    notification::Notification,
+    bluetooth::service_proxy::BluetoothServiceProxy, configuration::NotificationConf, notification,
 };
 
 /// A task that monitors inactivity and turns off the Bluetooth adapter after a specified duration.
 ///
 /// It sends warning notifications at specific intervals (5m, 1m, 30s, 10s) before the timeout occurs.
 #[derive(Debug, Clone)]
-
 pub struct TimeoutTask {
+    /// The total duration to wait before turning off the adapter.
     pub timeout: Duration,
+    /// The proxy to communicate with the Bluetooth service.
     pub service_proxy: BluetoothServiceProxy,
+    /// Notification configuration used during this timeout cycle.
+    notification_conf: NotificationConf,
+    /// ID of the last notification sent, for use by future notification replacement.
     last_notification_id: u32,
 }
 
+/// Construction, notification scheduling, and spawning.
 impl TimeoutTask {
     /// Creates a new `TimeoutTask`.
     ///
@@ -29,10 +33,16 @@ impl TimeoutTask {
     ///
     /// * `timeout` - The total duration to wait before turning off the adapter.
     /// * `service_proxy` - The proxy to communicate with the Bluetooth service.
-    pub fn new(timeout: Duration, service_proxy: BluetoothServiceProxy) -> Self {
+    /// * `notification_conf` - The notification configuration for this timeout cycle.
+    pub const fn new(
+        timeout: Duration,
+        service_proxy: BluetoothServiceProxy,
+        notification_conf: NotificationConf,
+    ) -> Self {
         Self {
             timeout,
             service_proxy,
+            notification_conf,
             last_notification_id: 0,
         }
     }
@@ -47,67 +57,65 @@ impl TimeoutTask {
             "Starting timeout task: will turn off adapter after {} of inactivity.",
             humantime::format_duration(self.timeout)
         );
-        let conf = Conf::instance();
 
-        if conf.notifications.enabled {
-            for &time in &conf.notifications.at {
-                self.notification_at(time.clone()).await;
+        if self.notification_conf.enabled {
+            for time in std::mem::take(&mut self.notification_conf.at) {
+                self.notification_at(time).await;
             }
         }
 
         tokio::time::sleep(self.timeout).await;
         match self.service_proxy.turn_off_adapter().await {
-            Ok(_) => info!("Adapter turned off."),
+            Ok(()) => info!("Adapter turned off."),
             Err(e) => warn!("Failed to turn off adapter: {}", e),
         }
 
-        if conf.notifications.enabled {
-            let _ = Notification::new()
-                .title("Bluetooth Adapter Turned Off")
-                .body("Bluetooth adapter has been turned off due to inactivity.")
-                .icon("bluetooth-disabled-symbolic")
-                // .replaces_id(self.last_notification_id)
-                .show()
-                .await
-                .inspect_err(|e| error!("Failed to show notification: {}", e));
+        if self.notification_conf.enabled {
+            let _ = notification::notify(
+                "Bluetooth Adapter Turned Off",
+                "Bluetooth adapter has been turned off due to inactivity.",
+                "bluetooth-disabled-symbolic",
+            )
+            .await
+            .inspect_err(|e| error!("Failed to show notification: {}", e));
         }
         info!("Timeout task completed.");
     }
 
-    /// Waits until the remaining time matches the specified `time`, then sends a warning n
-    /// otification.
+    /// Waits until the remaining time matches the specified `time`, then sends a warning
+    /// notification.
     ///
-    /// If the current timeout duration is already less than or equal to `time`, this method does
-    /// nothing immediately.
+    /// If the current timeout duration is already less than or equal to `time`, this method returns
+    /// immediately without sleeping or sending a notification.
     async fn notification_at(&mut self, time: Duration) {
         if self.timeout < time {
             return;
         }
 
         if self.timeout != time {
-            tokio::time::sleep(self.timeout - time).await;
+            tokio::time::sleep(self.timeout.saturating_sub(time)).await;
             self.timeout = time;
         }
 
         self.send_notification(&time).await;
     }
 
-    /// Helper method to construct and send a warning notification.
+    /// Sends a warning notification about the impending adapter shutdown.
     ///
-    /// Updates `last_notification_id` to allow future notifications to replace this one (if implemented).
+    /// Updates `last_notification_id` to allow future notifications to replace this one
+    /// (if implemented).
     async fn send_notification(&mut self, duration: &Duration) {
-        self.last_notification_id = Notification::new()
-            .title("Bluetooth Timeout Warning")
-            .body(&format!(
+        self.last_notification_id = notification::notify(
+            "Bluetooth Timeout Warning",
+            &format!(
                 "Bluetooth adapter will turn off in {} due to inactivity.",
                 humantime::format_duration(*duration)
-            ))
-            .icon("bluetooth-symbolic")
-            // .replaces_id(self.last_notification_id)
-            .show()
-            .await
-            .inspect_err(|e| error!("Failed to show notification: {}", e))
-            .unwrap_or(0);
+            ),
+            "bluetooth-symbolic",
+        )
+        .await
+        .inspect_err(|e| error!("Failed to show notification: {}", e))
+        .unwrap_or(0);
     }
 
     /// Spawns the `TimeoutTask` onto the Tokio runtime.

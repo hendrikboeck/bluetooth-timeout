@@ -2,12 +2,20 @@
 local M = {}
 
 ----------------------------------------------------------------------
+--  Config Version
+----------------------------------------------------------------------
+
+-- Schema version of this configuration file.
+-- Bump it when adjusting to a newer format, or run 'bluetooth-timeout migrate'.
+M.version = "@VERSION@"
+
+----------------------------------------------------------------------
 --  Timeout
 ----------------------------------------------------------------------
 
 -- Duration of inactivity before the Bluetooth adapter is turned off.
 -- Format: humantime (e.g. "5m", "30s", "1m30s", "2h").
-M.timeout = "1m"
+M.timeout = "@TIMEOUT@"
 
 ----------------------------------------------------------------------
 --  Adapters
@@ -24,7 +32,7 @@ M.timeout = "1m"
 --
 -- To hardcode adapters, replace with a table of paths:
 --   M.adapters = { { path = "/org/bluez/hci0" } }
-M.adapters = find_adapters()
+M.adapters = @ADAPTERS@
 
 ----------------------------------------------------------------------
 --  Notifications
@@ -32,11 +40,11 @@ M.adapters = find_adapters()
 
 M.notifications = {
   -- Set to false to disable all desktop notifications.
-  enabled = true,
+  enabled = @NOTIFICATIONS_ENABLED@,
 
   -- Warning notifications are sent at these remaining times before the
   -- adapter is turned off. Add or remove entries as needed.
-  at = { "5m", "1m", "30s", "10s" },
+  at = { @NOTIFICATIONS_AT@ },
 }
 
 ----------------------------------------------------------------------

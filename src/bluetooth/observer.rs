@@ -42,13 +42,13 @@ pub struct BluetoothEventObserver {
     pub tx: broadcast::Sender<BluetoothEvent>,
 }
 
+/// D-Bus signal observation and event broadcasting.
 impl BluetoothEventObserver {
     /// Creates a new Bluetooth event observer for the specified adapter interface.
     ///
     /// # Arguments
     ///
-    /// - `iface` - A string slice that holds the D-Bus object path of the Bluetooth adapter (e.g.,
-    ///    "/org/bluez/hci0").
+    /// - `iface` - A string slice that holds the D-Bus object path of the Bluetooth adapter (e.g., "/org/bluez/hci0").
     ///
     /// # Returns
     ///
@@ -167,29 +167,19 @@ impl BluetoothEventObserver {
                     debug!("Received PropertiesChanged signal: {:#?}", signal.args());
                     let args = &signal.args().unwrap();
 
-                    match args.changed_properties.get("Powered") {
-                        Some(Value::Bool(true)) => {
-                            debug!(
-                                "Bluetooth adapter powered ON on interface: {}",
-                                args.interface_name
-                            );
-                            if let Err(e) = tx.send(BluetoothEvent::AdapterOn) {
-                                error!("Failed to send AdapterOn event: {}", e);
-                            }
-                        }
-
-                        Some(Value::Bool(false)) => {
-                            debug!(
-                                "Bluetooth adapter powered OFF on interface: {}",
-                                args.interface_name
-                            );
-                            if let Err(e) = tx.send(BluetoothEvent::AdapterOff) {
-                                error!("Failed to send AdapterOff event: {}", e);
-                            }
-                        }
-
-                        _ => {
-                            debug!("Powered property not changed or not a boolean.");
+                    if let Some(Value::Bool(powered)) = args.changed_properties.get("Powered") {
+                        debug!(
+                            "Bluetooth adapter powered {} on interface: {}",
+                            if *powered { "ON" } else { "OFF" },
+                            args.interface_name
+                        );
+                        let event = if *powered {
+                            BluetoothEvent::AdapterOn
+                        } else {
+                            BluetoothEvent::AdapterOff
+                        };
+                        if let Err(e) = tx.send(event) {
+                            error!("Failed to send Bluetooth event: {}", e);
                         }
                     }
                 }

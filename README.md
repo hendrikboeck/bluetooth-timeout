@@ -17,6 +17,7 @@
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Migration](#migration)
 - [Usage](#usage)
 - [Logging](#logging)
 - [Development](#development)
@@ -30,6 +31,12 @@ It integrates with the system D-Bus to monitor Bluetooth state (adapter on/off, 
 Internally, the service is built on `tokio`'s async runtime: when there are no relevant Bluetooth D-Bus events coming in, the async tasks simply park. Under the hood this means the threads are suspended by the OS event loop (`epoll`) until a matching D-Bus signal arrives, so the daemon is effectively idle, basically near-zero CPU/power usage, with only a small, steady RAM footprint (~10M).
 
 It manages all Bluetooth adapters by default (filters can be applied in config). Designed as a user-level `systemd` service, configured via a Lua script.
+
+### Config Schema Versioning
+
+Config files carry a schema version (`M.version = "2"`). Each binary supports one major schema version. The `migrate` subcommand handles upgrades:
+- **v2.0** (current): Lua-based config with `find_adapters()` discovery.
+- **v1**: Legacy YAML config (auto-migrated to v2 on `migrate`).
 
 ## Prerequisites
 
@@ -50,7 +57,7 @@ The project uses a [Justfile](Justfile) to automate building and installation.
     ```
 
 2.  **Install using Just:**
-    This command builds the release binary, installs it to `~/.local/bin`, copies config files and the systemd service unit, and enables the service.
+    This command builds the release binary, installs it to `~/.local/bin`, runs the migration (creates config + LSP files), and enables the systemd service.
 
     ```sh
     just install
@@ -60,15 +67,17 @@ The project uses a [Justfile](Justfile) to automate building and installation.
 
 ## Configuration
 
-Configuration is written in **Lua** at `~/.config/bluetooth-timeout/config.lua`. LSP type annotations are provided in a separate `types.lua` file (discovered via `.luarc.json`).
+Configuration is written in **Lua** at `~/.config/bluetooth-timeout/config.lua`. LSP type annotations are provided alongside (`types.lua`, `.luarc.json`).
 
-`just install` copies all three files to `~/.config/bluetooth-timeout/` if they don't already exist.
+The `migrate` command creates these files automatically on first run, or you can upgrade an existing config with `bluetooth-timeout migrate`.
 
 ### Example
 
 ```lua
 ---@type BluetoothTimeoutConfig
 local M = {}
+
+M.version = "2"
 
 M.timeout = "5m"
 
@@ -122,7 +131,22 @@ An optional filter table can be passed to narrow results:
 | :--------------- | :------ | :-------------------------------------------------------------------------- |
 | `multithreaded`  | `false` | `false`: single-threaded (ideal for 1-2 adapters). `true`: multi-threaded (3+ adapters). |
 
-See [`contrib/config.lua`](contrib/config.lua) for the full annotated template and [`src/configuration.rs`](src/configuration.rs) for implementation details.
+See [`contrib/config/v2.0/config.lua`](contrib/config/v2.0/config.lua) for the full template and [`src/configuration.rs`](src/configuration.rs) for implementation details.
+
+## Migration
+
+Config schema versions are tracked independently of the crate version. Run `migrate` to:
+
+- Create a fresh config on new installs.
+- Upgrade from v1 (YAML) to v2 (Lua), preserving settings.
+- Install/update LSP support files (`types.lua`, `.luarc.json`).
+
+```sh
+bluetooth-timeout migrate               # from the installed binary
+just migrate                            # or via Justfile
+```
+
+The daemon also emits a warning at startup if the config is outdated.
 
 ## Usage
 
@@ -131,6 +155,7 @@ Once installed, the service runs automatically in the background. You can manage
 | Action           | Just Command     | Systemd Command                                      |
 | :--------------- | :--------------- | :--------------------------------------------------- |
 | **Install**      | `just install`   | _(See Installation steps above)_                     |
+| **Migrate**      | `just migrate`   | `bluetooth-timeout migrate`                          |
 | **Check Status** | `just status`    | `systemctl --user status bluetooth-timeout.service`  |
 | **View Logs**    | `just logs`      | `journalctl --user -u bluetooth-timeout.service -f`  |
 | **Restart**      | `just restart`   | `systemctl --user restart bluetooth-timeout.service` |
@@ -152,4 +177,4 @@ To run the project locally in debug mode:
 cargo run
 ```
 
-In debug mode, the configuration is read from [`contrib/config.lua`](contrib/config.lua) in the current directory instead of the XDG config path.
+In debug mode, the configuration is read from [`contrib/config/v2.0/config.lua`](contrib/config/v2.0/config.lua) in the current directory instead of the XDG config path.

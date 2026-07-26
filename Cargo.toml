@@ -2,13 +2,22 @@
 name = "bluetooth-timeout"
 version = "0.2.0"
 edition = "2024"
+description = "Automatically powers off idle Bluetooth adapters after a configurable inactivity timeout"
+license = "MIT"
+repository = "https://github.com/hendrikboeck/bluetooth-timeout"
+authors = ["Hendrik Böck <hendrikboeck.dev@protonmail.com>"]
+keywords = ["bluetooth", "timeout", "daemon", "bluez", "dbus"]
+categories = ["command-line-utilities", "hardware-support"]
 
 [dependencies]
 anyhow = "1.0.103"
+clap = { version = "4.5", features = ["derive"] }
 console-subscriber = { version = "0.5.0", optional = true }
 futures-util = "0.3.32"
 humantime = "2.4.0"
 mlua = { version = "0.11.6", features = ["lua54", "vendored", "send"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
 tokio = { version = "1.52.3", features = [
     "macros",
     "rt-multi-thread",
@@ -23,3 +32,6 @@ zbus = { version = "5.16.0", features = ["tokio"] }
 
 [features]
 tokio-console = ["dep:console-subscriber"]
+
+[lints.clippy]
+multiple_crate_versions = "allow"

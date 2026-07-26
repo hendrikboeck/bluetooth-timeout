@@ -39,6 +39,7 @@ const LOG_LEVEL: LevelFilter = LevelFilter::INFO;
 ///
 /// # Errors
 /// - [`anyhow::Error`] if the XDG data directory cannot be used or created. (!release builds only)
+#[allow(clippy::unnecessary_wraps)]
 pub fn log_filepath() -> Result<PathBuf> {
     #[cfg(debug_assertions)]
     {

@@ -27,10 +27,11 @@
 
 --- Top-level configuration table.
 ---@class BluetoothTimeoutConfig
----@field timeout       string                Inactivity duration in humantime format
----@field adapters      BluetoothAdapter[]    Adapters to manage
----@field notifications NotificationsConfig
----@field runtime       RuntimeConfig
+---@field version        string                Config schema version (e.g. "2")
+---@field timeout        string                Inactivity duration in humantime format
+---@field adapters       BluetoothAdapter[]    Adapters to manage
+---@field notifications  NotificationsConfig
+---@field runtime        RuntimeConfig
 
 ---@class NotificationsConfig
 ---@field enabled boolean Whether desktop notifications are enabled

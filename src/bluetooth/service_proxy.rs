@@ -20,13 +20,13 @@ pub struct BluetoothServiceProxy {
     conn: Connection,
 }
 
+/// D-Bus operations for a Bluetooth adapter.
 impl BluetoothServiceProxy {
     /// Creates a new `BluetoothServiceProxy` for the specified interface.
     ///
     /// # Arguments
     ///
-    /// - `iface` - A string slice that holds the D-Bus object path of the Bluetooth adapter (e.g.,
-    ///     "/org/bluez/hci0").
+    /// - `iface` - A string slice that holds the D-Bus object path of the Bluetooth adapter (e.g., "/org/bluez/hci0").
     ///
     /// # Returns
     ///
@@ -74,7 +74,7 @@ impl BluetoothServiceProxy {
 
     /// Retrieves a list of Bluetooth devices associated with this adapter.
     ///
-    /// This method queries the ObjectManager for all managed objects and filters them
+    /// This method queries the `ObjectManager` for all managed objects and filters them
     /// to find devices that belong to the current adapter interface.
     ///
     /// # Returns
@@ -96,9 +96,8 @@ impl BluetoothServiceProxy {
         let mut devices = vec![];
 
         for (path, ifaces) in objects {
-            let props = match ifaces.get(BLUEZ_DEVICE_IFACE) {
-                Some(p) => p,
-                None => continue,
+            let Some(props) = ifaces.get(BLUEZ_DEVICE_IFACE) else {
+                continue;
             };
 
             let path_str = path.to_string();
@@ -109,8 +108,7 @@ impl BluetoothServiceProxy {
             let name = props.get("Name").map(|v| v.to_string());
             let connected = props
                 .get("Connected")
-                .map(|v| v.downcast_ref::<bool>().ok())
-                .flatten()
+                .and_then(|v| v.downcast_ref::<bool>().ok())
                 .unwrap_or(false);
 
             devices.push(BluetoothDevice {

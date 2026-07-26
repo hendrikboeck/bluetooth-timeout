@@ -1,10 +1,8 @@
 // -- std imports
-use std::sync::OnceLock;
-use std::{fs, time::Duration};
+use std::{fs, path::PathBuf, time::Duration};
 
 // -- crate imports (conditional)
 #[cfg(not(debug_assertions))]
-#[allow(unused_imports)]
 use anyhow::Context;
 
 // -- crate imports
@@ -14,8 +12,32 @@ use tracing::{info, warn};
 // -- module imports
 use crate::lua_config;
 
-/// Global singleton instance of [`Conf`].
-static CONF: OnceLock<Conf> = OnceLock::new();
+/// Major version of the config schema.
+///
+/// Bumped when the config format changes in a breaking way that requires migration.
+/// This is stored as the `M.version` field in the generated Lua config.
+pub const VERSION_MAJOR: u32 = 2;
+
+/// Minor version of the config schema.
+///
+/// Bumped for non-breaking additions to the config template (new comments, new
+/// default fields, LSP support files). Does not trigger migration.
+pub const VERSION_MINOR: u32 = 0;
+
+/// Returns the path to the configuration directory.
+///
+/// In debug builds this is `./contrib`. In release builds this uses the XDG base directory and
+/// resolves to `~/.config/bluetooth-timeout`.
+///
+/// # Errors
+/// - [`anyhow::Error`] if the config directory cannot be determined (release builds only).
+pub fn conf_dirpath() -> Result<PathBuf> {
+    let filepath = PathBuf::from(conf_filepath()?);
+    Ok(filepath
+        .parent()
+        .unwrap_or(PathBuf::new().as_path())
+        .to_path_buf())
+}
 
 /// Returns the path to the configuration file.
 ///
@@ -25,6 +47,7 @@ static CONF: OnceLock<Conf> = OnceLock::new();
 ///
 /// # Errors
 /// - [`anyhow::Error`] if the config file path cannot be determined (release builds only).
+#[allow(clippy::unnecessary_wraps)]
 pub fn conf_filepath() -> Result<String> {
     #[cfg(debug_assertions)]
     {
@@ -45,6 +68,11 @@ pub fn conf_filepath() -> Result<String> {
 /// Application configuration.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Conf {
+    /// Config schema version.
+    ///
+    /// Default: `2`.
+    pub version: u32,
+
     /// Number of seconds before a timeout is triggered.
     ///
     /// Default: `5m`.
@@ -77,7 +105,7 @@ pub struct NotificationConf {
 }
 
 /// Runtime configuration.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct RuntimeConf {
     /// Whether to use a multi-threaded runtime.
     ///
@@ -85,6 +113,7 @@ pub struct RuntimeConf {
     pub multithreaded: bool,
 }
 
+/// Default notification configuration: enabled with standard warning intervals.
 impl Default for NotificationConf {
     fn default() -> Self {
         Self {
@@ -99,17 +128,11 @@ impl Default for NotificationConf {
     }
 }
 
-impl Default for RuntimeConf {
-    fn default() -> Self {
-        Self {
-            multithreaded: false,
-        }
-    }
-}
-
+/// Default configuration: 5m timeout, hci0 adapter, notifications enabled.
 impl Default for Conf {
     fn default() -> Self {
         Self {
+            version: VERSION_MAJOR,
             timeout: Duration::from_mins(5),
             notifications: NotificationConf::default(),
             runtime: RuntimeConf::default(),
@@ -118,46 +141,32 @@ impl Default for Conf {
     }
 }
 
+/// Configuration loading and lifecycle.
 impl Conf {
-    /// Loads the configuration from the Lua config file into the global instance.
+    /// Loads the configuration from the Lua config file.
     ///
     /// If the path cannot be determined or the file cannot be read or parsed, falls back to
-    /// [`Conf::instance`], which uses the default configuration.
-    pub async fn load() -> &'static Self {
-        match conf_filepath() {
-            Ok(p) => Self::from_file(&p).await,
+    /// [`Conf::default`].
+    pub async fn load() -> Self {
+        let filepath = match conf_filepath() {
+            Ok(p) => p,
             Err(e) => {
                 warn!(
                     "Could not determine config file path: {}. Falling back to defaults.",
                     e
                 );
-                Self::instance()
+                return Self::default();
             }
-        }
-    }
+        };
 
-    /// Initializes the global configuration from the Lua file at `path`.
-    ///
-    /// If the configuration is already initialized, the existing instance is returned and the file
-    /// is ignored. On any read or parse error, falls back to [`Conf::default`].
-    pub async fn from_file(path: &str) -> &'static Self {
-        if let Some(conf) = CONF.get() {
-            warn!(
-                "Conf::from_file({}) called, but configuration is already initialized. Using \
-                    existing configuration and ignoring the file.",
-                path
-            );
-            return conf;
-        }
-
-        let contents = match fs::read_to_string(path) {
+        let contents = match fs::read_to_string(&filepath) {
             Ok(c) => c,
             Err(e) => {
                 warn!(
                     "Could not read config file '{}': {}. Falling back to defaults.",
-                    path, e
+                    filepath, e
                 );
-                return Self::instance();
+                return Self::default();
             }
         };
 
@@ -172,32 +181,18 @@ impl Conf {
             }
         };
 
-        CONF.get_or_init(|| match lua_config::load_config(&contents, &adapters) {
+        match lua_config::load_config(&contents, adapters) {
             Ok(conf) => {
-                info!("Successfully loaded configuration from '{}'.", path);
+                info!("Successfully loaded configuration from '{}'.", filepath);
                 conf
             }
             Err(e) => {
                 warn!(
                     "Could not parse config file '{}': {}. Falling back to defaults.",
-                    path, e
+                    filepath, e
                 );
-                Conf::default()
+                Self::default()
             }
-        })
-    }
-
-    /// Returns the global configuration instance.
-    ///
-    /// If the configuration has not been loaded yet, this initializes it with [`Conf::default`]
-    /// and logs a warning.
-    pub fn instance() -> &'static Self {
-        CONF.get_or_init(|| {
-            warn!(
-                "Conf::instance() called before Conf::from_file(); initializing configuration with \
-                default values."
-            );
-            Conf::default()
-        })
+        }
     }
 }

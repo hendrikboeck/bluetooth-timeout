@@ -9,6 +9,7 @@ use tracing::{debug, error, info};
 // -- module imports
 use crate::{
     bluetooth::{observer::BluetoothEvent, service_proxy::BluetoothServiceProxy},
+    configuration::NotificationConf,
     timeout::TimeoutTask,
 };
 
@@ -43,16 +44,17 @@ pub struct BluetoothService {
     pub active_timer: Option<tokio::task::JoinHandle<()>>,
     /// Duration before the timeout triggers.
     timeout: Duration,
+    /// Notification configuration, cloned to each spawned [`TimeoutTask`].
+    notification_conf: NotificationConf,
 }
 
 /// Retrieves the number of connected Bluetooth devices using the service proxy.
 async fn get_connected_devices_count_from_proxy(proxy: &BluetoothServiceProxy) -> usize {
     let devices = proxy.get_devices().await.unwrap_or(vec![]);
-    let connected_count = devices.iter().filter(|dev| dev.connected).count();
-
-    connected_count
+    devices.iter().filter(|dev| dev.connected).count()
 }
 
+/// State management, event handling, and timeout lifecycle.
 impl BluetoothService {
     /// Creates a new `BluetoothService`.
     ///
@@ -63,7 +65,12 @@ impl BluetoothService {
     ///
     /// - `iface` - The name of the Bluetooth interface to manage.
     /// - `timeout` - The duration to wait before turning off an idle adapter.
-    pub async fn new(iface: String, timeout: Duration) -> Result<Self> {
+    /// - `notification_conf` - The notification configuration.
+    pub async fn new(
+        iface: String,
+        timeout: Duration,
+        notification_conf: NotificationConf,
+    ) -> Result<Self> {
         let service_proxy = BluetoothServiceProxy::new(iface.clone()).await?;
         let num_connected_devices = get_connected_devices_count_from_proxy(&service_proxy).await;
         // Assume adapter is off if we cannot determine its powered state (e.g., Adapter not found)
@@ -87,7 +94,9 @@ impl BluetoothService {
                 "Starting timeout timer for idle adapter with timeout of {:?}",
                 timeout
             );
-            Some(TimeoutTask::new(timeout, service_proxy.clone()).spawn())
+            Some(
+                TimeoutTask::new(timeout, service_proxy.clone(), notification_conf.clone()).spawn(),
+            )
         } else {
             None
         };
@@ -99,6 +108,7 @@ impl BluetoothService {
             state,
             active_timer,
             timeout,
+            notification_conf,
         };
         debug!("Created new BluetoothService for iface {:?}", service.iface);
 
@@ -108,7 +118,7 @@ impl BluetoothService {
     /// Subscribes the service to a broadcast channel for `BluetoothEvent`s.
     pub fn subscribe_to(&mut self, rx: broadcast::Receiver<BluetoothEvent>) -> &mut Self {
         self.rx = Some(rx);
-        return self;
+        self
     }
 
     /// Starts the main event loop for the service.
@@ -135,19 +145,16 @@ impl BluetoothService {
                         .inspect_err(|e| error!("Error on AdapterOn event: {:#?}", e.backtrace()));
                 }
                 BluetoothEvent::AdapterOff => {
-                    let _ = self
-                        .on_adapter_off()
-                        .await
-                        .inspect_err(|e| error!("Error on AdapterOff event: {:#?}", e.backtrace()));
+                    self.on_adapter_off();
                 }
                 BluetoothEvent::InterfaceAdded => {
                     let _ = self.on_interface_added().await.inspect_err(|e| {
-                        error!("Error on InterfaceAdded event: {:#?}", e.backtrace())
+                        error!("Error on InterfaceAdded event: {:#?}", e.backtrace());
                     });
                 }
                 BluetoothEvent::InterfaceRemoved => {
                     let _ = self.on_interface_removed().await.inspect_err(|e| {
-                        error!("Error on InterfaceRemoved event: {:#?}", e.backtrace())
+                        error!("Error on InterfaceRemoved event: {:#?}", e.backtrace());
                     });
                 }
             }
@@ -162,21 +169,30 @@ impl BluetoothService {
         debug!("Handling AdapterOn event...");
 
         match self.state {
-            BluetoothServiceState::Off | BluetoothServiceState::Idle
-                if self.active_timer.is_none()
-                    || self.active_timer.as_ref().unwrap().is_finished() =>
-            {
-                self.active_timer =
-                    Some(TimeoutTask::new(self.timeout, self.service_proxy.clone()).spawn());
+            BluetoothServiceState::Off | BluetoothServiceState::Idle => {
+                let need_timer = self
+                    .active_timer
+                    .as_ref()
+                    .is_none_or(tokio::task::JoinHandle::is_finished);
+                if need_timer {
+                    self.active_timer = Some(
+                        TimeoutTask::new(
+                            self.timeout,
+                            self.service_proxy.clone(),
+                            self.notification_conf.clone(),
+                        )
+                        .spawn(),
+                    );
+                }
             }
-            BluetoothServiceState::Running
-                if self.active_timer.is_some()
-                    && !self.active_timer.as_ref().unwrap().is_finished() =>
-            {
-                self.active_timer.take().unwrap().abort();
-                info!("Cancelled active timeout timer.");
+            BluetoothServiceState::Running => {
+                if let Some(timer) = self.active_timer.take()
+                    && !timer.is_finished()
+                {
+                    timer.abort();
+                    info!("Cancelled active timeout timer.");
+                }
             }
-            _ => {}
         }
 
         if self.get_connected_devices_count().await > 0 {
@@ -191,7 +207,7 @@ impl BluetoothService {
     /// Handles the `AdapterOff` event.
     ///
     /// This method cancels any active timeout timer and sets the state to `Off`.
-    pub async fn on_adapter_off(&mut self) -> Result<()> {
+    pub fn on_adapter_off(&mut self) {
         debug!("Handling AdapterOff event...");
 
         if self.active_timer.is_some() {
@@ -210,7 +226,6 @@ impl BluetoothService {
         }
 
         self.state = BluetoothServiceState::Off;
-        Ok(())
     }
 
     /// Handles the `InterfaceAdded` event, which typically signifies a device connection.
@@ -236,18 +251,24 @@ impl BluetoothService {
         debug!("Connected devices count: {}", connected_devices);
 
         if connected_devices > 0 {
-            if let Some(timer) = self.active_timer.take() {
-                if !timer.is_finished() {
-                    timer.abort();
-                    info!("Cancelled active timeout timer.");
-                }
+            if let Some(timer) = self.active_timer.take()
+                && !timer.is_finished()
+            {
+                timer.abort();
+                info!("Cancelled active timeout timer.");
             }
             self.state = BluetoothServiceState::Running;
         } else {
             if self.active_timer.is_none() {
                 debug!("No connected devices and no active timer. Starting timeout timer...");
-                self.active_timer =
-                    Some(TimeoutTask::new(self.timeout, self.service_proxy.clone()).spawn());
+                self.active_timer = Some(
+                    TimeoutTask::new(
+                        self.timeout,
+                        self.service_proxy.clone(),
+                        self.notification_conf.clone(),
+                    )
+                    .spawn(),
+                );
             }
             self.state = BluetoothServiceState::Idle;
         }

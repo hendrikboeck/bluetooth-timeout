@@ -22,29 +22,24 @@ install: build
     # Shutdown existing service if running
     systemctl --user disable --now {{SERVICE_NAME}} || true
 
-    # Copy config files if they do not exist
-    mkdir -p "{{CONFIG_DIR}}"
-    if [ ! -f "{{CONFIG_DIR}}/config.lua" ]; then \
-        cp contrib/config.lua "{{CONFIG_DIR}}/config.lua"; \
-    fi
-    if [ ! -f "{{CONFIG_DIR}}/types.lua" ]; then \
-        cp contrib/types.lua "{{CONFIG_DIR}}/types.lua"; \
-    fi
-    if [ ! -f "{{CONFIG_DIR}}/.luarc.json" ]; then \
-        cp contrib/.luarc.json "{{CONFIG_DIR}}/.luarc.json"; \
-    fi
-
     # Install binary
     mkdir -p {{INSTALL_DIR}}
     cp target/release/{{BIN_NAME}} {{INSTALL_DIR}}/{{BIN_NAME}}
 
+    # Migrate config (handles YAML→Lua, version upgrades, fresh install)
+    {{INSTALL_DIR}}/{{BIN_NAME}} migrate
+
     # Install systemd user unit
     mkdir -p {{SYSTEMD_USER_DIR}}
-    cp contrib/{{SERVICE_NAME}} {{SYSTEMD_USER_DIR}}/{{SERVICE_NAME}}
+    cp contrib/systemd/{{SERVICE_NAME}} {{SYSTEMD_USER_DIR}}/{{SERVICE_NAME}}
 
     # Reload and enable service
     systemctl --user daemon-reload
     systemctl --user enable --now {{SERVICE_NAME}}
+
+# Migrate the installed configuration to the latest format version
+migrate:
+    {{INSTALL_DIR}}/{{BIN_NAME}} migrate
 
 start:
     systemctl --user start {{SERVICE_NAME}}
