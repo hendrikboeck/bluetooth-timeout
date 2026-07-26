@@ -18,24 +18,8 @@ build:
         cargo build --release; \
     fi
 
-install: build
-    # Shutdown existing service if running
-    systemctl --user disable --now {{SERVICE_NAME}} || true
-
-    # Install binary
-    mkdir -p {{INSTALL_DIR}}
-    cp target/release/{{BIN_NAME}} {{INSTALL_DIR}}/{{BIN_NAME}}
-
-    # Migrate config (handles YAML→Lua, version upgrades, fresh install)
-    {{INSTALL_DIR}}/{{BIN_NAME}} migrate
-
-    # Install systemd user unit
-    mkdir -p {{SYSTEMD_USER_DIR}}
-    cp contrib/systemd/{{SERVICE_NAME}} {{SYSTEMD_USER_DIR}}/{{SERVICE_NAME}}
-
-    # Reload and enable service
-    systemctl --user daemon-reload
-    systemctl --user enable --now {{SERVICE_NAME}}
+install *args: build
+    bash contrib/scripts/install.sh {{args}}
 
 # Migrate the installed configuration to the latest format version
 migrate:
@@ -62,8 +46,5 @@ enable:
 disable:
     systemctl --user disable {{SERVICE_NAME}}
 
-uninstall:
-    systemctl --user disable --now {{SERVICE_NAME}} || true
-    rm -f {{SYSTEMD_USER_DIR}}/{{SERVICE_NAME}}
-    rm -f {{INSTALL_DIR}}/{{BIN_NAME}}
-    systemctl --user daemon-reload
+uninstall *args:
+    bash contrib/scripts/install.sh --uninstall {{args}}
