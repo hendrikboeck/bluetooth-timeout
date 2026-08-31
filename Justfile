@@ -21,10 +21,6 @@ build:
 install *args: build
     bash contrib/scripts/install.sh {{args}}
 
-# Migrate the installed configuration to the latest format version
-migrate:
-    {{INSTALL_DIR}}/{{BIN_NAME}} migrate
-
 start:
     systemctl --user start {{SERVICE_NAME}}
 

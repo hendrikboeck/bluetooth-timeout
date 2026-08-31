@@ -9,7 +9,6 @@ use zbus::{Connection, fdo::ObjectManagerProxy};
 
 // -- module imports
 use crate::bluetooth::constants::{BLUEZ_ADAPTER_IFACE, BLUEZ_SERVICE};
-use crate::configuration::VERSION_MAJOR;
 
 /// Represents a Bluetooth adapter discovered via D-Bus.
 #[derive(Debug, Clone)]
@@ -239,74 +238,9 @@ pub fn load_config(
         Err(_) => super::configuration::NotificationConf::default(),
     };
 
-    let runtime = result.get::<Table>("runtime").map_or_else(
-        |_| super::configuration::RuntimeConf::default(),
-        |rt| {
-            let multithreaded: bool = rt.get::<bool>("multithreaded").unwrap_or(false);
-            super::configuration::RuntimeConf { multithreaded }
-        },
-    );
-
-    let version: u32 = result
-        .get::<String>("version")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(VERSION_MAJOR);
-
     Ok(super::configuration::Conf {
-        version,
         timeout,
         notifications,
-        runtime,
         adapter_paths,
     })
-}
-
-// -----------------------------------------------------------------------------------------------
-//  Lua code generation
-// -----------------------------------------------------------------------------------------------
-
-/// Embedded Lua config template for the current config schema version.
-const CONFIG_TEMPLATE: &str = include_str!("../contrib/config/v2.0/config.lua");
-
-/// Generate a `config.lua` source string from a [`super::configuration::Conf`].
-///
-/// The output is produced by substituting values into the embedded template
-/// for the current config schema version.
-pub fn generate_config(conf: &super::configuration::Conf) -> String {
-    let at = conf
-        .notifications
-        .at
-        .iter()
-        .map(|d| format!("\"{}\"", humantime::format_duration(*d)))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let adapter_entries: Vec<String> = conf
-        .adapter_paths
-        .iter()
-        .map(|p| format!("{{ path = \"{p}\" }}"))
-        .collect();
-    let adapters = if adapter_entries.is_empty() {
-        "find_adapters()".to_string()
-    } else {
-        format!("{{ {} }}", adapter_entries.join(", "))
-    };
-
-    CONFIG_TEMPLATE
-        .replace("@VERSION@", &conf.version.to_string())
-        .replace(
-            "@TIMEOUT@",
-            &humantime::format_duration(conf.timeout).to_string(),
-        )
-        .replace("@ADAPTERS@", &adapters)
-        .replace(
-            "@NOTIFICATIONS_ENABLED@",
-            if conf.notifications.enabled {
-                "true"
-            } else {
-                "false"
-            },
-        )
-        .replace("@NOTIFICATIONS_AT@", &at)
 }

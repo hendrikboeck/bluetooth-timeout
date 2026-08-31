@@ -53,7 +53,6 @@ run() {
 # ------------------------------------------------------------------------------
 # CLI argument parsing
 # ------------------------------------------------------------------------------
-MIGRATE=false
 CONFIG_ACT=""
 UNINSTALL=false
 REMOVE_CONFIG=false
@@ -62,12 +61,11 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --uninstall)        UNINSTALL=true;           shift ;;
         --remove-config)    REMOVE_CONFIG=true;       shift ;;
-        --migrate)          MIGRATE=true;             shift ;;
         --skip-config)      CONFIG_ACT="skip";        shift ;;
         --keep-config)      CONFIG_ACT="keep";        shift ;;
         --overwrite-config) CONFIG_ACT="overwrite";   shift ;;
         -h|--help)
-            echo "Usage: install.sh [--migrate] [--skip-config|--keep-config|--overwrite-config]"
+            echo "Usage: install.sh [--skip-config|--keep-config|--overwrite-config]"
             echo "       install.sh --uninstall [--remove-config]"
             exit 0 ;;
         *)
@@ -119,11 +117,9 @@ mkdir -p "$(dirname "$BIN")"
 cp "target/release/$BIN_NAME" "$BIN"
 say "Installed" "${BIN}"
 
-# Config migration
 # Local config: choose skip, keep, or overwrite.
 if [ -f "$LOCAL_CONFIG_FILE" ] && [ -z "$CONFIG_ACT" ]; then
-    local_ver="$(sed -n 's/.*M\.version\s*=\s*"\([0-9]*\)".*/\1/p' "$LOCAL_CONFIG_FILE" | head -1)"
-    [ -n "$local_ver" ] && note "Found local config (v${local_ver}) at ${LOCAL_CONFIG_FILE}"
+    note "Found local config at ${LOCAL_CONFIG_FILE}"
     ask "Choose" "skip, keep, or overwrite? ${DIM}[S/k/o]${RESET}"
     read -r ans
     case "${ans:-}" in
@@ -142,18 +138,6 @@ if [ -f "$LOCAL_CONFIG_FILE" ] && [ -z "$CONFIG_ACT" ]; then
             warn "Skipped" "local config"
             ;;
     esac
-fi
-
-# Migration prompt (keep mode).
-if ! $MIGRATE && [ -z "$CONFIG_ACT" ]; then
-    ask "Run" "migration? ${DIM}[y/N]${RESET}"
-    read -r ans
-    [[ "$ans" =~ ^[Yy] ]] && MIGRATE=true
-fi
-
-if $MIGRATE; then
-    run "$BIN" migrate
-    say "Migrated" "config"
 fi
 
 mkdir -p "$UNIT_DIR"

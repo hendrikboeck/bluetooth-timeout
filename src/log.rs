@@ -9,7 +9,7 @@ use console_subscriber::ConsoleLayer;
 use anyhow::{Context, Result};
 use tracing::warn;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
-use tracing_subscriber::{filter::{LevelFilter, Targets}, fmt, prelude::*, registry::Registry};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*, registry::Registry};
 
 /// Global guard that keeps the non-blocking file writer alive.
 ///
@@ -19,9 +19,6 @@ static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 /// Name of the log file created by the application.
 const LOG_FILE_NAME: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
-
-/// Default log level.
-const LOG_LEVEL: LevelFilter = LevelFilter::INFO;
 
 /// Returns the path to the log file used by the application.
 ///
@@ -80,13 +77,13 @@ fn build_file_writer() -> Result<NonBlocking> {
 
 /// Initializes global tracing with stdout and file logging.
 ///
+/// The log level is controlled by the `RUST_LOG` environment variable (e.g.
+/// `RUST_LOG=bluetooth-timeout=trace`), defaulting to `info` when unset.
+///
 /// # Errors
 /// - [`anyhow::Error`] if the global tracing subscriber cannot be installed.
-pub fn init_tracing(override_level: Option<LevelFilter>) -> Result<()> {
-    let level = override_level.unwrap_or(LOG_LEVEL);
-    let filter = Targets::new()
-        .with_default(LevelFilter::INFO)
-        .with_target(env!("CARGO_PKG_NAME").replace('-', "_"), level);
+pub fn init_tracing() -> Result<()> {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     #[cfg(debug_assertions)]
     let stdout_layer = fmt::layer()

@@ -2,20 +2,12 @@
 local M = {}
 
 ----------------------------------------------------------------------
---  Config Version
-----------------------------------------------------------------------
-
--- Schema version of this configuration file.
--- Bump it when adjusting to a newer format, or run 'bluetooth-timeout migrate'.
-M.version = "@VERSION@"
-
-----------------------------------------------------------------------
 --  Timeout
 ----------------------------------------------------------------------
 
 -- Duration of inactivity before the Bluetooth adapter is turned off.
 -- Format: humantime (e.g. "5m", "30s", "1m30s", "2h").
-M.timeout = "@TIMEOUT@"
+M.timeout = "5m"
 
 ----------------------------------------------------------------------
 --  Adapters
@@ -32,7 +24,7 @@ M.timeout = "@TIMEOUT@"
 --
 -- To hardcode adapters, replace with a table of paths:
 --   M.adapters = { { path = "/org/bluez/hci0" } }
-M.adapters = @ADAPTERS@
+M.adapters = find_adapters()
 
 ----------------------------------------------------------------------
 --  Notifications
@@ -40,28 +32,11 @@ M.adapters = @ADAPTERS@
 
 M.notifications = {
   -- Set to false to disable all desktop notifications.
-  enabled = @NOTIFICATIONS_ENABLED@,
+  enabled = true,
 
   -- Warning notifications are sent at these remaining times before the
   -- adapter is turned off. Add or remove entries as needed.
-  at = { @NOTIFICATIONS_AT@ },
-}
-
-----------------------------------------------------------------------
---  Runtime
-----------------------------------------------------------------------
-
-M.runtime = {
-  -- Whether to use a multi-threaded tokio runtime.
-  --
-  -- false (default): Single-threaded. Everything runs on one OS thread
-  --   using async concurrency. Lower overhead, ideal for 1-2 adapters.
-  --   This is the right choice for virtually all users.
-  --
-  -- true: Multi-threaded. Work is distributed across a thread pool,
-  --   enabling actual parallel execution. Only useful if you manage
-  --   many adapters simultaneously (3+).
-  multithreaded = false,
+  at = { "5m", "1m", "30s", "10s" },
 }
 
 return M

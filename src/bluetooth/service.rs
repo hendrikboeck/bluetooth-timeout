@@ -210,19 +210,9 @@ impl BluetoothService {
     pub fn on_adapter_off(&mut self) {
         debug!("Handling AdapterOff event...");
 
-        if self.active_timer.is_some() {
-            tokio::spawn({
-                let timer = self.active_timer.take().unwrap();
-
-                async move {
-                    // Give some time for the timer to abort gracefully
-                    tokio::time::sleep(Duration::from_secs(3)).await;
-                    if !timer.is_finished() {
-                        timer.abort();
-                        info!("Cancelled active timeout timer.");
-                    }
-                }
-            });
+        if let Some(timer) = self.active_timer.take() {
+            timer.abort();
+            info!("Cancelled active timeout timer.");
         }
 
         self.state = BluetoothServiceState::Off;

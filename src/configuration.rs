@@ -1,5 +1,5 @@
 // -- std imports
-use std::{fs, path::PathBuf, time::Duration};
+use std::{fs, time::Duration};
 
 // -- crate imports (conditional)
 #[cfg(not(debug_assertions))]
@@ -11,33 +11,6 @@ use tracing::{info, warn};
 
 // -- module imports
 use crate::lua_config;
-
-/// Major version of the config schema.
-///
-/// Bumped when the config format changes in a breaking way that requires migration.
-/// This is stored as the `M.version` field in the generated Lua config.
-pub const VERSION_MAJOR: u32 = 2;
-
-/// Minor version of the config schema.
-///
-/// Bumped for non-breaking additions to the config template (new comments, new
-/// default fields, LSP support files). Does not trigger migration.
-pub const VERSION_MINOR: u32 = 0;
-
-/// Returns the path to the configuration directory.
-///
-/// In debug builds this is `.local/config`. In release builds this uses the XDG base directory and
-/// resolves to `~/.config/bluetooth-timeout`.
-///
-/// # Errors
-/// - [`anyhow::Error`] if the config directory cannot be determined (release builds only).
-pub fn conf_dirpath() -> Result<PathBuf> {
-    let filepath = PathBuf::from(conf_filepath()?);
-    Ok(filepath
-        .parent()
-        .unwrap_or(PathBuf::new().as_path())
-        .to_path_buf())
-}
 
 /// Returns the path to the configuration file.
 ///
@@ -67,11 +40,6 @@ pub fn conf_filepath() -> Result<String> {
 /// Application configuration.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Conf {
-    /// Config schema version.
-    ///
-    /// Default: `2`.
-    pub version: u32,
-
     /// Number of seconds before a timeout is triggered.
     ///
     /// Default: `5m`.
@@ -79,9 +47,6 @@ pub struct Conf {
 
     /// Notification configuration.
     pub notifications: NotificationConf,
-
-    /// Runtime configuration.
-    pub runtime: RuntimeConf,
 
     /// D-Bus object paths of the Bluetooth adapters to manage.
     ///
@@ -103,15 +68,6 @@ pub struct NotificationConf {
     pub at: Vec<Duration>,
 }
 
-/// Runtime configuration.
-#[derive(Debug, Default, PartialEq, Eq, Clone)]
-pub struct RuntimeConf {
-    /// Whether to use a multi-threaded runtime.
-    ///
-    /// Default: `false`.
-    pub multithreaded: bool,
-}
-
 /// Default notification configuration: enabled with standard warning intervals.
 impl Default for NotificationConf {
     fn default() -> Self {
@@ -131,10 +87,8 @@ impl Default for NotificationConf {
 impl Default for Conf {
     fn default() -> Self {
         Self {
-            version: VERSION_MAJOR,
             timeout: Duration::from_mins(5),
             notifications: NotificationConf::default(),
-            runtime: RuntimeConf::default(),
             adapter_paths: vec!["/org/bluez/hci0".to_string()],
         }
     }
