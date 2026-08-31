@@ -157,13 +157,13 @@ Once installed, the service runs automatically in the background. You can manage
 
 | Action           | Just Command     | Systemd Command                                      |
 | :--------------- | :--------------- | :--------------------------------------------------- |
-    | **Install**      | `just install`   | _(See Installation steps above)_                     |
-    | **Migrate**      | `just migrate`   | `bluetooth-timeout migrate`                          |
-    | **Check Status** | `just status`    | `systemctl --user status bluetooth-timeout.service`  |
-    | **View Logs**    | `just logs`      | `journalctl --user -u bluetooth-timeout.service -f`  |
-    | **Restart**      | `just restart`   | `systemctl --user restart bluetooth-timeout.service` |
-    | **Stop**         | `just stop`      | `systemctl --user stop bluetooth-timeout.service`    |
-    | **Uninstall**    | `just uninstall` | _(See Justfile for cleanup steps)_                   |
+| **Install**      | `just install`   | _(See Installation steps above)_                     |
+| **Migrate**      | `just migrate`   | `bluetooth-timeout migrate`                          |
+| **Check Status** | `just status`    | `systemctl --user status bluetooth-timeout.service`  |
+| **View Logs**    | `just logs`      | `journalctl --user -u bluetooth-timeout.service -f`  |
+| **Restart**      | `just restart`   | `systemctl --user restart bluetooth-timeout.service` |
+| **Stop**         | `just stop`      | `systemctl --user stop bluetooth-timeout.service`    |
+| **Uninstall**    | `just uninstall` | _(See Justfile for cleanup steps)_                   |
 
 The install script at [`contrib/scripts/install.sh`](contrib/scripts/install.sh) can also be run directly with `--skip-config`, `--keep-config`, or `--overwrite-config`.
 
