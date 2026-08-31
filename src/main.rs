@@ -3,8 +3,6 @@
 //! Monitors Bluetooth adapter state via D-Bus, sends desktop notifications at configurable
 //! intervals before the timeout expires, and powers off the adapter when the timer elapses.
 
-#![allow(clippy::multiple_crate_versions)]
-
 // -- module definitions
 /// Bluetooth D-Bus integration (observer, service, device types).
 mod bluetooth;
@@ -72,7 +70,7 @@ async fn main() {
 
         let adapter_path = adapter_path.clone();
         tokio::spawn(async move {
-            if let Err(e) = bt_service.subscribe_to(rx).start().await {
+            if let Err(e) = bt_service.start(rx).await {
                 error!("Bluetooth service for {} failed: {}", adapter_path, e);
             }
         });

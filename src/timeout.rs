@@ -72,6 +72,7 @@ impl TimeoutTask {
 
         if self.notification_conf.enabled {
             let _ = notification::notify(
+                0,
                 "Bluetooth Adapter Turned Off",
                 "Bluetooth adapter has been turned off due to inactivity.",
                 "bluetooth-disabled-symbolic",
@@ -102,10 +103,11 @@ impl TimeoutTask {
 
     /// Sends a warning notification about the impending adapter shutdown.
     ///
-    /// Updates `last_notification_id` to allow future notifications to replace this one
-    /// (if implemented).
+    /// Replaces the previous warning notification via `last_notification_id`.
     async fn send_notification(&mut self, duration: &Duration) {
+        let replaces_id = self.last_notification_id;
         self.last_notification_id = notification::notify(
+            replaces_id,
             "Bluetooth Timeout Warning",
             &format!(
                 "Bluetooth adapter will turn off in {} due to inactivity.",

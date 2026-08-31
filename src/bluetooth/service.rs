@@ -32,10 +32,6 @@ pub enum BluetoothServiceState {
 pub struct BluetoothService {
     /// The Bluetooth interface name (e.g., "hci0").
     pub iface: String,
-    /// Receiver for Bluetooth events.
-    ///
-    /// This is an `Option` to allow for late initialization via `subscribe_to`.
-    rx: Option<broadcast::Receiver<BluetoothEvent>>,
     /// Proxy to interact with the Bluetooth service via D-Bus.
     service_proxy: BluetoothServiceProxy,
     /// Current state of the Bluetooth service.
@@ -103,7 +99,6 @@ impl BluetoothService {
 
         let service = Self {
             iface,
-            rx: None,
             service_proxy,
             state,
             active_timer,
@@ -115,24 +110,11 @@ impl BluetoothService {
         Ok(service)
     }
 
-    /// Subscribes the service to a broadcast channel for `BluetoothEvent`s.
-    pub fn subscribe_to(&mut self, rx: broadcast::Receiver<BluetoothEvent>) -> &mut Self {
-        self.rx = Some(rx);
-        self
-    }
-
     /// Starts the main event loop for the service.
     ///
     /// This method will run indefinitely, waiting for and processing `BluetoothEvent`s.
-    /// It requires a receiver to have been subscribed via `subscribe_to`.
-    pub async fn start(&mut self) -> Result<()> {
-        if self.rx.is_none() {
-            return Err(anyhow::anyhow!(
-                "Cannot start BluetoothService without a subscribed receiver"
-            ));
-        }
-
-        let mut rx = self.rx.take().unwrap();
+    pub async fn start(&mut self, rx: broadcast::Receiver<BluetoothEvent>) -> Result<()> {
+        let mut rx = rx;
         loop {
             let event = rx.recv().await?;
             tracing::info!("BluetoothService received event: {:#?}", event);

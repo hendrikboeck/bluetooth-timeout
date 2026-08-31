@@ -5,8 +5,9 @@ use zbus::{Connection, zvariant::Value};
 
 /// Send a desktop notification via org.freedesktop.Notifications D-Bus.
 ///
-/// Returns the notification ID on success.
-pub async fn notify(title: &str, body: &str, icon: &str) -> Result<u32> {
+/// `replaces_id` is the ID of the notification to replace (0 for a new one).
+/// Returns the new notification ID on success.
+pub async fn notify(replaces_id: u32, title: &str, body: &str, icon: &str) -> Result<u32> {
     let conn = Connection::session().await?;
     let reply = conn
         .call_method(
@@ -16,7 +17,7 @@ pub async fn notify(title: &str, body: &str, icon: &str) -> Result<u32> {
             "Notify",
             &(
                 env!("CARGO_PKG_NAME"),
-                0u32,
+                replaces_id,
                 icon,
                 title,
                 body,
