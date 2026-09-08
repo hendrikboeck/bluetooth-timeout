@@ -7,18 +7,20 @@ use tracing::{error, info, warn};
 
 // -- module imports
 use crate::{
-    bluetooth::service_proxy::BluetoothServiceProxy, configuration::NotificationConf, notification,
+    bluetooth::service_proxy::{AdapterProxy, BluetoothServiceProxy},
+    configuration::NotificationConf,
+    notification,
 };
 
 /// A task that monitors inactivity and turns off the Bluetooth adapter after a specified duration.
 ///
 /// It sends warning notifications at specific intervals (5m, 1m, 30s, 10s) before the timeout occurs.
 #[derive(Debug, Clone)]
-pub struct TimeoutTask {
+pub struct TimeoutTask<P: AdapterProxy = BluetoothServiceProxy> {
     /// The total duration to wait before turning off the adapter.
     pub timeout: Duration,
     /// The proxy to communicate with the Bluetooth service.
-    pub service_proxy: BluetoothServiceProxy,
+    pub service_proxy: P,
     /// Notification configuration used during this timeout cycle.
     notification_conf: NotificationConf,
     /// ID of the last notification sent, for use by future notification replacement.
@@ -26,7 +28,7 @@ pub struct TimeoutTask {
 }
 
 /// Construction, notification scheduling, and spawning.
-impl TimeoutTask {
+impl<P: AdapterProxy> TimeoutTask<P> {
     /// Creates a new `TimeoutTask`.
     ///
     /// # Arguments
@@ -36,7 +38,7 @@ impl TimeoutTask {
     /// * `notification_conf` - The notification configuration for this timeout cycle.
     pub const fn new(
         timeout: Duration,
-        service_proxy: BluetoothServiceProxy,
+        service_proxy: P,
         notification_conf: NotificationConf,
     ) -> Self {
         Self {

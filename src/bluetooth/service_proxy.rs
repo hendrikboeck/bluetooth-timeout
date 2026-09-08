@@ -1,5 +1,6 @@
 // -- crate imports
 use anyhow::Result;
+use futures_util::future::BoxFuture;
 use zbus::{Connection, names::InterfaceName, zvariant::Value};
 
 // -- module imports
@@ -121,6 +122,15 @@ impl BluetoothServiceProxy {
         Ok(devices)
     }
 
+    /// Retrieves the number of currently connected devices.
+    ///
+    /// Returns the count of devices reporting a connected state, or `0` if the device
+    /// list cannot be retrieved.
+    pub async fn get_connected_devices_count(&self) -> usize {
+        let devices = self.get_devices().await.unwrap_or(vec![]);
+        devices.iter().filter(|dev| dev.connected).count()
+    }
+
     /// Turns off the Bluetooth adapter.
     ///
     /// This method sets the "Powered" property of the adapter interface to `false` via D-Bus.
@@ -148,5 +158,31 @@ impl BluetoothServiceProxy {
             .await?;
 
         Ok(())
+    }
+}
+
+/// Abstraction over the adapter operations used by the service and timeout logic.
+///
+/// # ponytail: introduced only for testability; the sole production impl is [`BluetoothServiceProxy`].
+pub trait AdapterProxy: Clone + Send + Sync + 'static {
+    /// Whether the adapter is powered on.
+    fn is_powered(&self) -> BoxFuture<'_, Result<bool>>;
+    /// Number of currently connected devices.
+    fn get_connected_devices_count(&self) -> BoxFuture<'_, usize>;
+    /// Powers off the adapter.
+    fn turn_off_adapter(&self) -> BoxFuture<'_, Result<()>>;
+}
+
+impl AdapterProxy for BluetoothServiceProxy {
+    fn is_powered(&self) -> BoxFuture<'_, Result<bool>> {
+        Box::pin(async move { Self::is_powered(self).await })
+    }
+
+    fn get_connected_devices_count(&self) -> BoxFuture<'_, usize> {
+        Box::pin(async move { Self::get_connected_devices_count(self).await })
+    }
+
+    fn turn_off_adapter(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move { Self::turn_off_adapter(self).await })
     }
 }
