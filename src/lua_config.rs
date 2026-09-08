@@ -116,8 +116,10 @@ fn create_find_adapters(lua: &Lua) -> mlua::Result<mlua::Function> {
         let filter_name_pattern: Option<String> = filter.get("name_pattern").ok();
         let filter_address: Option<String> = filter.get("address").ok();
         let filter_address_prefix: Option<String> = filter.get("address_prefix").ok();
-        let filter_powered: Option<bool> = filter.get("powered").ok();
-        let filter_discoverable: Option<bool> = filter.get("discoverable").ok();
+        // `.get::<bool>` maps a missing key to `false` (mlua coerces nil -> false),
+        // so read as `Option<bool>` and flatten to treat absence as "no filter".
+        let filter_powered: Option<bool> = filter.get("powered").ok().flatten();
+        let filter_discoverable: Option<bool> = filter.get("discoverable").ok().flatten();
 
         let result = lua.create_table()?;
         let mut idx: i64 = 1;
@@ -243,4 +245,223 @@ pub fn load_config(
         notifications,
         adapter_paths,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::configuration::NotificationConf;
+
+    fn adapter(
+        path: &str,
+        address: &str,
+        name: &str,
+        powered: bool,
+        discoverable: bool,
+    ) -> LuaAdapter {
+        LuaAdapter {
+            path: path.to_string(),
+            address: address.to_string(),
+            name: name.to_string(),
+            powered,
+            discoverable,
+        }
+    }
+
+    fn two_adapters() -> Vec<LuaAdapter> {
+        vec![
+            adapter(
+                "/org/bluez/hci0",
+                "00:1A:7D:DA:71:13",
+                "My Dongle",
+                true,
+                true,
+            ),
+            adapter(
+                "/org/bluez/hci1",
+                "00:1B:2C:3D:4E:5F",
+                "Other Adapter",
+                false,
+                false,
+            ),
+        ]
+    }
+
+    #[test]
+    fn parses_full_config() {
+        let src = r#"
+            local M = {}
+            M.timeout = "5m"
+            M.adapters = find_adapters { powered = true }
+            M.notifications = { enabled = true, at = { "5m", "1m", "30s", "10s" } }
+            return M
+        "#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.timeout, Duration::from_mins(5));
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci0".to_string()]);
+        assert_eq!(
+            conf.notifications,
+            NotificationConf {
+                enabled: true,
+                at: vec![
+                    Duration::from_mins(5),
+                    Duration::from_mins(1),
+                    Duration::from_secs(30),
+                    Duration::from_secs(10),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn parses_compound_timeout() {
+        let src = r#"return { timeout = "1m30s", adapters = find_adapters() }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.timeout, Duration::from_secs(90));
+    }
+
+    #[test]
+    fn missing_timeout_errors() {
+        let src = r"return { adapters = find_adapters() }";
+        assert!(load_config(src, two_adapters()).is_err());
+    }
+
+    #[test]
+    fn invalid_timeout_errors() {
+        let src = r#"return { timeout = "not-a-duration", adapters = find_adapters() }"#;
+        assert!(load_config(src, two_adapters()).is_err());
+    }
+
+    #[test]
+    fn missing_adapters_falls_back_to_hci0() {
+        let src = r#"return { timeout = "5m" }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci0".to_string()]);
+    }
+
+    #[test]
+    fn hardcoded_adapters_are_used() {
+        let src = r#"
+            return {
+                timeout = "5m",
+                adapters = { { path = "/org/bluez/hci0" }, { path = "/org/bluez/hci1" } },
+            }
+        "#;
+        let conf = load_config(src, vec![]).unwrap();
+        assert_eq!(
+            conf.adapter_paths,
+            vec!["/org/bluez/hci0".to_string(), "/org/bluez/hci1".to_string()]
+        );
+    }
+
+    #[test]
+    fn missing_notifications_uses_default() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters() }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.notifications, NotificationConf::default());
+    }
+
+    #[test]
+    fn notifications_can_be_disabled() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters(), notifications = { enabled = false } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert!(!conf.notifications.enabled);
+    }
+
+    #[test]
+    fn notifications_custom_intervals() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters(), notifications = { enabled = true, at = { "1m", "10s" } } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(
+            conf.notifications.at,
+            vec![Duration::from_mins(1), Duration::from_secs(10)]
+        );
+    }
+
+    #[test]
+    fn invalid_notification_duration_errors() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters(), notifications = { at = { "nope" } } }"#;
+        assert!(load_config(src, two_adapters()).is_err());
+    }
+
+    #[test]
+    fn find_adapters_no_filter_returns_all() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters() }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(
+            conf.adapter_paths,
+            vec!["/org/bluez/hci0".to_string(), "/org/bluez/hci1".to_string()]
+        );
+    }
+
+    #[test]
+    fn find_adapters_filter_by_name() {
+        let src =
+            r#"return { timeout = "5m", adapters = find_adapters { name = "Other Adapter" } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci1".to_string()]);
+    }
+
+    #[test]
+    fn find_adapters_filter_by_name_pattern() {
+        let src =
+            r#"return { timeout = "5m", adapters = find_adapters { name_pattern = "Dongle" } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci0".to_string()]);
+    }
+
+    #[test]
+    fn find_adapters_filter_by_address() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters { address = "00:1B:2C:3D:4E:5F" } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci1".to_string()]);
+    }
+
+    #[test]
+    fn find_adapters_filter_by_address_prefix() {
+        let src =
+            r#"return { timeout = "5m", adapters = find_adapters { address_prefix = "00:1A" } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci0".to_string()]);
+    }
+
+    #[test]
+    fn find_adapters_filter_by_powered() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters { powered = true } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci0".to_string()]);
+    }
+
+    #[test]
+    fn find_adapters_filter_by_discoverable() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters { discoverable = true } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci0".to_string()]);
+    }
+
+    #[test]
+    fn find_adapters_filter_no_match_is_empty() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters { name = "nope" } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert!(conf.adapter_paths.is_empty());
+    }
+
+    #[test]
+    fn find_adapters_combined_filters() {
+        let src = r#"return { timeout = "5m", adapters = find_adapters { powered = true, address_prefix = "00:1A" } }"#;
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.adapter_paths, vec!["/org/bluez/hci0".to_string()]);
+    }
+
+    #[test]
+    fn parses_shipped_example_config() {
+        let src = include_str!("../contrib/config/config.example.lua");
+        let conf = load_config(src, two_adapters()).unwrap();
+        assert_eq!(conf.timeout, Duration::from_mins(5));
+        assert_eq!(
+            conf.adapter_paths,
+            vec!["/org/bluez/hci0".to_string(), "/org/bluez/hci1".to_string()]
+        );
+        assert_eq!(conf.notifications, NotificationConf::default());
+    }
 }
