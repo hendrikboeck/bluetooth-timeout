@@ -36,20 +36,17 @@ async fn main() {
     let conf = Conf::load().await;
     debug!("Configuration:\n{:#?}", conf);
 
-    for adapter_path in &conf.adapter_paths {
-        let observer = match BluetoothEventObserver::new(adapter_path.clone()).await {
-            Ok(o) => o,
-            Err(e) => {
-                error!(
-                    "Could not create Bluetooth observer for {}: {}",
-                    adapter_path, e
-                );
-                continue;
-            }
-        };
+    let observer = match BluetoothEventObserver::new().await {
+        Ok(o) => o,
+        Err(e) => {
+            error!("Could not create Bluetooth observer: {e}");
+            return;
+        }
+    };
+    observer.listen();
 
+    for adapter_path in &conf.adapter_paths {
         let rx = observer.subscribe();
-        observer.listen();
 
         let mut bt_service = match BluetoothService::new(
             adapter_path.clone(),

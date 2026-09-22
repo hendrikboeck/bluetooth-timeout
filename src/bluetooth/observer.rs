@@ -5,15 +5,16 @@ use core::panic;
 use anyhow::Result;
 use futures_util::stream::StreamExt;
 use tokio::{sync::broadcast, task::JoinHandle};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument};
 use zbus::{
-    Connection,
-    fdo::{ObjectManagerProxy, PropertiesProxy},
+    Connection, MatchRule, MessageStream,
+    fdo::{ObjectManagerProxy, PropertiesChanged},
+    message::Type,
     zvariant::Value,
 };
 
 // -- module imports
-use crate::bluetooth::constants::BLUEZ_SERVICE;
+use crate::bluetooth::constants::{BLUEZ_ADAPTER_IFACE, BLUEZ_DEVICE_IFACE, BLUEZ_SERVICE};
 
 /// Defines the Bluetooth events that can be observed.
 ///
@@ -34,8 +35,6 @@ pub enum BluetoothEvent {
 /// Observes Bluetooth status changes from D-Bus and broadcasts them.
 #[derive(Debug, Clone)]
 pub struct BluetoothEventObserver {
-    /// Interface path for the Bluetooth adapter.
-    pub iface: String,
     /// The current connection to the D-Bus.
     conn: Connection,
     /// The sender for broadcasting events to subscribers.
@@ -44,11 +43,7 @@ pub struct BluetoothEventObserver {
 
 /// D-Bus signal observation and event broadcasting.
 impl BluetoothEventObserver {
-    /// Creates a new Bluetooth event observer for the specified adapter interface.
-    ///
-    /// # Arguments
-    ///
-    /// - `iface` - A string slice that holds the D-Bus object path of the Bluetooth adapter (e.g., "/org/bluez/hci0").
+    /// Creates a new Bluetooth event observer.
     ///
     /// # Returns
     ///
@@ -58,11 +53,11 @@ impl BluetoothEventObserver {
     /// # Errors
     ///
     /// - [`anyhow::Error`] if the connection to the system D-Bus cannot be established.
-    pub async fn new(iface: String) -> Result<Self> {
+    pub async fn new() -> Result<Self> {
         let conn = Connection::system().await?;
         let (tx, _rx) = broadcast::channel(10);
 
-        Ok(Self { iface, conn, tx })
+        Ok(Self { conn, tx })
     }
 
     /// Subscribes to Bluetooth events.
@@ -72,10 +67,11 @@ impl BluetoothEventObserver {
 
     /// Spawns the observer to run in a background task.
     #[instrument(skip(self))]
-    pub fn listen(self) -> JoinHandle<()> {
+    pub fn listen(&self) -> JoinHandle<()> {
         info!("Spawning Bluetooth event observer task.");
+        let this = self.clone();
         tokio::spawn(async move {
-            if let Err(e) = self.run().await {
+            if let Err(e) = this.run().await {
                 error!("Bluetooth observer failed: {}", e);
                 panic!("Bluetooth observer encountered a fatal error.");
             }
@@ -91,12 +87,15 @@ impl BluetoothEventObserver {
     #[instrument(skip_all)]
     async fn run(&self) -> Result<()> {
         self.dispatch_iface_observer().await?;
-        self.dispatch_adapter_props_observer().await?;
+        self.dispatch_props_observer().await?;
 
         Ok(())
     }
 
-    /// Sets up the observer for Bluetooth interface added/removed signals.
+    /// Sets up the observer for Bluetooth interface added signals.
+    ///
+    /// New device objects are announced via `InterfacesAdded`; device connect/disconnect
+    /// transitions are handled by the `Connected` property in [`Self::dispatch_props_observer`].
     ///
     /// # Errors
     ///
@@ -111,7 +110,6 @@ impl BluetoothEventObserver {
         debug!("Bluetooth interface proxy created.");
 
         let mut iface_add_stream = proxy.receive_interfaces_added().await?;
-        let mut iface_rm_stream = proxy.receive_interfaces_removed().await?;
 
         tokio::spawn({
             let tx = self.tx.clone();
@@ -126,61 +124,70 @@ impl BluetoothEventObserver {
             }
         });
 
-        tokio::spawn({
-            let tx = self.tx.clone();
-            async move {
-                info!("Listening for InterfacesRemoved signals.");
-                while let Some(signal) = iface_rm_stream.next().await {
-                    debug!("Received InterfacesRemoved signal: {:#?}", signal.args());
-                    if let Err(e) = tx.send(BluetoothEvent::InterfaceRemoved) {
-                        error!("Failed to send InterfaceRemoved event: {}", e);
-                    }
-                }
-            }
-        });
-
         Ok(())
     }
 
-    /// Sets up the observer for Bluetooth adapter property changes.
+    /// Sets up the observer for Bluetooth property changes.
+    ///
+    /// Listens for `PropertiesChanged` signals from BlueZ: the adapter's `Powered` property
+    /// maps to `AdapterOn`/`AdapterOff`, and a device's `Connected` property maps to
+    /// `InterfaceAdded`/`InterfaceRemoved`.
     ///
     /// # Errors
     ///
     /// - [`anyhow::Error`] if setting up the observer fails.
     #[instrument(skip_all)]
-    async fn dispatch_adapter_props_observer(&self) -> Result<()> {
-        let proxy = PropertiesProxy::builder(&self.conn)
-            .destination(BLUEZ_SERVICE)?
-            .path(self.iface.as_str())?
-            .build()
-            .await?;
-        debug!("Bluetooth adapter properties proxy created.");
-
-        let mut props_changed_stream = proxy.receive_properties_changed().await?;
+    async fn dispatch_props_observer(&self) -> Result<()> {
+        let rule = MatchRule::builder()
+            .msg_type(Type::Signal)
+            .sender(BLUEZ_SERVICE)?
+            .interface("org.freedesktop.DBus.Properties")?
+            .member("PropertiesChanged")?
+            .build();
+        let mut stream = MessageStream::for_match_rule(rule, &self.conn, Some(1)).await?;
 
         tokio::spawn({
             let tx = self.tx.clone();
             async move {
                 info!("Listening for PropertiesChanged signals.");
 
-                while let Some(signal) = props_changed_stream.next().await {
-                    debug!("Received PropertiesChanged signal: {:#?}", signal.args());
-                    let args = &signal.args().unwrap();
+                while let Some(item) = stream.next().await {
+                    let Ok(msg) = item else { continue };
+                    let Some(signal) = PropertiesChanged::from_message(msg) else {
+                        continue;
+                    };
+                    let Ok(args) = signal.args() else { continue };
 
-                    if let Some(Value::Bool(powered)) = args.changed_properties.get("Powered") {
-                        debug!(
-                            "Bluetooth adapter powered {} on interface: {}",
-                            if *powered { "ON" } else { "OFF" },
-                            args.interface_name
-                        );
-                        let event = if *powered {
-                            BluetoothEvent::AdapterOn
-                        } else {
-                            BluetoothEvent::AdapterOff
-                        };
-                        if let Err(e) = tx.send(event) {
-                            error!("Failed to send Bluetooth event: {}", e);
+                    match args.interface_name.as_str() {
+                        BLUEZ_ADAPTER_IFACE => {
+                            if let Some(Value::Bool(powered)) =
+                                args.changed_properties.get("Powered")
+                            {
+                                let event = if *powered {
+                                    BluetoothEvent::AdapterOn
+                                } else {
+                                    BluetoothEvent::AdapterOff
+                                };
+                                if let Err(e) = tx.send(event) {
+                                    error!("Failed to send Bluetooth event: {}", e);
+                                }
+                            }
                         }
+                        BLUEZ_DEVICE_IFACE => {
+                            if let Some(Value::Bool(connected)) =
+                                args.changed_properties.get("Connected")
+                            {
+                                let event = if *connected {
+                                    BluetoothEvent::InterfaceAdded
+                                } else {
+                                    BluetoothEvent::InterfaceRemoved
+                                };
+                                if let Err(e) = tx.send(event) {
+                                    error!("Failed to send Bluetooth event: {}", e);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
