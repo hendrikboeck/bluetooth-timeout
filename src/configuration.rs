@@ -68,6 +68,30 @@ pub struct NotificationConf {
     pub at: Vec<Duration>,
 }
 
+/// Adapter discovery configuration.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct DiscoveryConf {
+    /// Total number of discovery attempts before giving up.
+    ///
+    /// Default: `6`.
+    pub attempts: usize,
+
+    /// Delay between discovery attempts.
+    ///
+    /// Default: `2s`.
+    pub delay: Duration,
+}
+
+/// Default discovery configuration: 6 attempts with a 2s delay between them.
+impl Default for DiscoveryConf {
+    fn default() -> Self {
+        Self {
+            attempts: 6,
+            delay: Duration::from_secs(2),
+        }
+    }
+}
+
 /// Default notification configuration: enabled with standard warning intervals.
 impl Default for NotificationConf {
     fn default() -> Self {
@@ -123,7 +147,18 @@ impl Conf {
             }
         };
 
-        let adapters = match lua_config::discover_adapters().await {
+        let discovery = match lua_config::load_discovery_conf(&contents) {
+            Ok(d) => d,
+            Err(e) => {
+                warn!(
+                    "Could not parse discovery settings from '{}': {}. Using defaults.",
+                    filepath, e
+                );
+                DiscoveryConf::default()
+            }
+        };
+
+        let adapters = match lua_config::discover_adapters(&discovery).await {
             Ok(a) => a,
             Err(e) => {
                 warn!(

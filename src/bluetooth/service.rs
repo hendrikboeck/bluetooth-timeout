@@ -4,7 +4,7 @@ use std::time::Duration;
 // -- crate imports
 use anyhow::Result;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 // -- module imports
 use crate::{
@@ -72,16 +72,13 @@ impl BluetoothService {
         // Assume adapter is off if we cannot determine its powered state (e.g., Adapter not found)
         let powered = service_proxy.is_powered().await.unwrap_or(false);
 
+        // When the adapter is powered off, any `Connected` device state is stale, so treat
+        // `(false, _)` as `Off` rather than erroring out. That transient state can occur right
+        // after boot or wake and would otherwise prevent the service from starting at all.
         let state = match (powered, num_connected_devices) {
-            (false, 0) => BluetoothServiceState::Off,
+            (false, _) => BluetoothServiceState::Off,
             (true, 0) => BluetoothServiceState::Idle,
-            (true, devs) if devs > 0 => BluetoothServiceState::Running,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Could not determine BluetoothService state or encountered unexpected state
-                    (like powered: false with connected devices)"
-                ));
-            }
+            (true, _) => BluetoothServiceState::Running,
         };
         info!("Initial BluetoothService state: {:#?}", state);
 
@@ -116,7 +113,24 @@ impl BluetoothService {
     pub async fn start(&mut self, rx: broadcast::Receiver<BluetoothEvent>) -> Result<()> {
         let mut rx = rx;
         loop {
-            let event = rx.recv().await?;
+            let event = match rx.recv().await {
+                Ok(event) => event,
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    // The receiver fell behind (e.g. a burst of connect/disconnect signals on
+                    // wake). Re-sync from D-Bus instead of aborting, otherwise the dropped
+                    // receiver would close the broadcast channel for good.
+                    warn!(
+                        "Missed {skipped} Bluetooth events; re-synchronizing adapter state."
+                    );
+                    self.sync_state().await;
+                    continue;
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    info!("Bluetooth event channel closed; stopping service.");
+                    return Ok(());
+                }
+            };
+
             tracing::info!("BluetoothService received event: {:#?}", event);
 
             match event {
@@ -251,5 +265,48 @@ impl BluetoothService {
     /// Gets the current number of connected devices.
     async fn get_connected_devices_count(&self) -> usize {
         get_connected_devices_count_from_proxy(&self.service_proxy).await
+    }
+
+    /// Re-synchronizes the service's internal state with the adapter's actual state.
+    ///
+    /// Used to recover after the event receiver lagged behind (missed events), so the timeout
+    /// timer and state reflect reality even when some events were dropped.
+    async fn sync_state(&mut self) {
+        let powered = self.service_proxy.is_powered().await.unwrap_or(false);
+        let connected_devices = self.get_connected_devices_count().await;
+
+        self.state = match (powered, connected_devices) {
+            (false, _) => BluetoothServiceState::Off,
+            (true, 0) => BluetoothServiceState::Idle,
+            (true, _) => BluetoothServiceState::Running,
+        };
+
+        self.reconcile_timer();
+        debug!("Re-synchronized BluetoothService state to {:#?}", self.state);
+    }
+
+    /// Ensures the timeout timer matches the current state: a timer runs only while idle.
+    fn reconcile_timer(&mut self) {
+        if self.state == BluetoothServiceState::Idle {
+            let need_timer = self
+                .active_timer
+                .as_ref()
+                .is_none_or(tokio::task::JoinHandle::is_finished);
+            if need_timer {
+                self.active_timer = Some(
+                    TimeoutTask::new(
+                        self.timeout,
+                        self.service_proxy.clone(),
+                        self.notification_conf.clone(),
+                    )
+                    .spawn(),
+                );
+            }
+        } else if let Some(timer) = self.active_timer.take()
+            && !timer.is_finished()
+        {
+            timer.abort();
+            info!("Cancelled active timeout timer.");
+        }
     }
 }

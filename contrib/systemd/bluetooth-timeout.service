@@ -1,6 +1,7 @@
 [Unit]
 Description=Bluetooth Timeout Daemon
-After=network.target
+Wants=bluetooth.service
+After=bluetooth.service
 
 [Service]
 ExecStart=%h/.local/bin/bluetooth-timeout

@@ -15,12 +15,7 @@ console-subscriber = { version = "0.5.0", optional = true }
 futures-util = "0.3.33"
 humantime = "2.4.0"
 mlua = { version = "0.12.0", features = ["lua54", "vendored", "send"] }
-tokio = { version = "1.53.1", features = [
-    "macros",
-    "rt",
-    "time",
-    "signal",
-] }
+tokio = { version = "1", features = ["macros", "rt", "time", "signal"] }
 tracing = { version = "0.1.44", features = ["release_max_level_info"] }
 tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
@@ -32,6 +27,12 @@ tokio-console = ["dep:console-subscriber"]
 
 [profile.release]
 opt-level = "z"   # optimize for size (like ReleaseSmall)
-lto = true        # link-time optimization
+lto = "thin"      # link-time optimization
 codegen-units = 1 # single codegen unit, better LTO
 strip = true      # strip debug symbols
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+multiple_crate_versions = "allow"

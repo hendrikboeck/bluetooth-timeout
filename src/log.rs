@@ -114,7 +114,7 @@ pub fn init_tracing() -> Result<()> {
                 .with_target(false)
                 .with_ansi(false)
                 .with_writer(writer)
-                .with_filter(filter.clone());
+                .with_filter(filter);
 
             #[cfg(not(debug_assertions))]
             let file_layer = fmt::layer()
@@ -123,7 +123,7 @@ pub fn init_tracing() -> Result<()> {
                 .with_ansi(false)
                 .with_writer(writer)
                 .with_target(false)
-                .with_filter(filter.clone());
+                .with_filter(filter);
 
             #[cfg(all(debug_assertions, feature = "tokio-console"))]
             let subscriber = Registry::default()

@@ -72,8 +72,8 @@ local M = {}
 
 M.timeout = "5m"
 
--- Auto-discover all Bluetooth adapters
-M.adapters = find_adapters()
+-- Auto-discover all Bluetooth adapters (with discovery retry settings)
+M.adapters = find_adapters { retries = { attempts = 6, delay = "2s" } }
 
 -- Or filter: only powered adapters
 -- M.adapters = find_adapters { powered = true }
@@ -111,6 +111,8 @@ An optional filter table can be passed to narrow results:
 | `address_prefix`   | string  | MAC address prefix match        |
 | `powered`          | boolean | Filter by powered state         |
 | `discoverable`     | boolean | Filter by discoverable state    |
+
+At startup (and after system wake) the adapter may not be enumerated by BlueZ yet. The `retries` option passed to `find_adapters` controls how often adapter discovery is retried before giving up, so the daemon does not start with an empty adapter list and miss Bluetooth state changes.
 
 See [`contrib/config/config.example.lua`](contrib/config/config.example.lua) for the full example and [`src/configuration.rs`](src/configuration.rs) for implementation details.
 

@@ -129,7 +129,7 @@ impl BluetoothEventObserver {
 
     /// Sets up the observer for Bluetooth property changes.
     ///
-    /// Listens for `PropertiesChanged` signals from BlueZ: the adapter's `Powered` property
+    /// Listens for `PropertiesChanged` signals from `BlueZ`: the adapter's `Powered` property
     /// maps to `AdapterOn`/`AdapterOff`, and a device's `Connected` property maps to
     /// `InterfaceAdded`/`InterfaceRemoved`.
     ///
