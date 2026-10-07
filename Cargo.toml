@@ -29,7 +29,7 @@ tokio-console = ["dep:console-subscriber"]
 opt-level = "z"   # optimize for size (like ReleaseSmall)
 lto = "thin"      # link-time optimization
 codegen-units = 1 # single codegen unit, better LTO
-strip = true      # strip debug symbols
+strip = "debuginfo" # strip debug info, keep symbols for readable backtraces
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

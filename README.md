@@ -72,8 +72,8 @@ local M = {}
 
 M.timeout = "5m"
 
--- Auto-discover all Bluetooth adapters (with discovery retry settings)
-M.adapters = find_adapters { retries = { attempts = 6, delay = "2s" } }
+-- Auto-discover all Bluetooth adapters
+M.adapters = find_adapters()
 
 -- Or filter: only powered adapters
 -- M.adapters = find_adapters { powered = true }
@@ -112,7 +112,7 @@ An optional filter table can be passed to narrow results:
 | `powered`          | boolean | Filter by powered state         |
 | `discoverable`     | boolean | Filter by discoverable state    |
 
-At startup (and after system wake) the adapter may not be enumerated by BlueZ yet. The `retries` option passed to `find_adapters` controls how often adapter discovery is retried before giving up, so the daemon does not start with an empty adapter list and miss Bluetooth state changes.
+At startup (and after system wake) the adapter may not be enumerated by BlueZ yet. If no adapter is discovered, the daemon exits and the systemd service restarts it (`Restart=on-failure`) until an adapter appears, rather than starting with an empty adapter list and missing Bluetooth state changes.
 
 See [`contrib/config/config.example.lua`](contrib/config/config.example.lua) for the full example and [`src/configuration.rs`](src/configuration.rs) for implementation details.
 

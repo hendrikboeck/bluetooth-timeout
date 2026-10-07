@@ -32,6 +32,18 @@ pub enum BluetoothEvent {
     InterfaceRemoved,
 }
 
+/// Broadcasts an event to subscribers, panicking if the channel has no receivers.
+///
+/// A failed send means every subscriber's receiver has been dropped (the "broken pipe" case), so
+/// there is no service left to react to events. The process panics (crashing with a stack trace)
+/// so the systemd service (`Restart=on-failure`) restarts the daemon instead of silently dropping
+/// events.
+fn send_event(tx: &broadcast::Sender<BluetoothEvent>, event: BluetoothEvent, what: &str) {
+    if let Err(e) = tx.send(event) {
+        panic!("Failed to send {what} event: {e}; no subscribers");
+    }
+}
+
 /// Observes Bluetooth status changes from D-Bus and broadcasts them.
 #[derive(Debug, Clone)]
 pub struct BluetoothEventObserver {
@@ -117,9 +129,7 @@ impl BluetoothEventObserver {
                 info!("Listening for InterfacesAdded signals.");
                 while let Some(signal) = iface_add_stream.next().await {
                     debug!("Received InterfacesAdded signal: {:#?}", signal.args());
-                    if let Err(e) = tx.send(BluetoothEvent::InterfaceAdded) {
-                        error!("Failed to send InterfaceAdded event: {}", e);
-                    }
+                    send_event(&tx, BluetoothEvent::InterfaceAdded, "InterfaceAdded");
                 }
             }
         });
@@ -168,9 +178,7 @@ impl BluetoothEventObserver {
                                 } else {
                                     BluetoothEvent::AdapterOff
                                 };
-                                if let Err(e) = tx.send(event) {
-                                    error!("Failed to send Bluetooth event: {}", e);
-                                }
+                                send_event(&tx, event, "Adapter");
                             }
                         }
                         BLUEZ_DEVICE_IFACE => {
@@ -182,9 +190,7 @@ impl BluetoothEventObserver {
                                 } else {
                                     BluetoothEvent::InterfaceRemoved
                                 };
-                                if let Err(e) = tx.send(event) {
-                                    error!("Failed to send Bluetooth event: {}", e);
-                                }
+                                send_event(&tx, event, "Device");
                             }
                         }
                         _ => {}

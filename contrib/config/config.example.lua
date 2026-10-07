@@ -22,14 +22,13 @@ M.timeout = "5m"
 --   find_adapters { address_prefix = "00:1A" }
 --   find_adapters { powered = true, name = "My Adapter" }
 --
--- Right after boot or wake, BlueZ may not have enumerated the adapter yet. The
--- `retries` option controls how often discovery is retried before giving up:
---
---   find_adapters { retries = { attempts = 6, delay = "2s" } }
+-- If no adapter is discovered (e.g. right after boot or wake, before BlueZ has
+-- enumerated it), the daemon exits and systemd restarts it (`Restart=on-failure`)
+-- until an adapter appears.
 --
 -- To hardcode adapters, replace with a table of paths:
 --   M.adapters = { { path = "/org/bluez/hci0" } }
-M.adapters = find_adapters { retries = { attempts = 6, delay = "2s" } }
+M.adapters = find_adapters()
 
 ----------------------------------------------------------------------
 --  Notifications

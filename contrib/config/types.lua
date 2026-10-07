@@ -24,12 +24,6 @@
 ---@field address_prefix?   string  MAC address prefix match
 ---@field powered?          boolean Filter by powered state
 ---@field discoverable?     boolean Filter by discoverable state
----@field retries?          DiscoveryConfig Adapter discovery retry settings
-
---- Adapter discovery retry settings.
----@class DiscoveryConfig
----@field attempts integer Total discovery attempts before giving up
----@field delay    string  Delay between discovery attempts (humantime)
 
 --- Top-level configuration table.
 ---@class BluetoothTimeoutConfig

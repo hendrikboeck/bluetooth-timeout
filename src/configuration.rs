@@ -68,30 +68,6 @@ pub struct NotificationConf {
     pub at: Vec<Duration>,
 }
 
-/// Adapter discovery configuration.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct DiscoveryConf {
-    /// Total number of discovery attempts before giving up.
-    ///
-    /// Default: `6`.
-    pub attempts: usize,
-
-    /// Delay between discovery attempts.
-    ///
-    /// Default: `2s`.
-    pub delay: Duration,
-}
-
-/// Default discovery configuration: 6 attempts with a 2s delay between them.
-impl Default for DiscoveryConf {
-    fn default() -> Self {
-        Self {
-            attempts: 6,
-            delay: Duration::from_secs(2),
-        }
-    }
-}
-
 /// Default notification configuration: enabled with standard warning intervals.
 impl Default for NotificationConf {
     fn default() -> Self {
@@ -124,7 +100,12 @@ impl Conf {
     ///
     /// If the path cannot be determined or the file cannot be read or parsed, falls back to
     /// [`Conf::default`].
-    pub async fn load() -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no Bluetooth adapters can be discovered, so the caller can exit and
+    /// let the systemd service restart the daemon (`Restart=on-failure`).
+    pub async fn load() -> Result<Self> {
         let filepath = match conf_filepath() {
             Ok(p) => p,
             Err(e) => {
@@ -132,7 +113,7 @@ impl Conf {
                     "Could not determine config file path: {}. Falling back to defaults.",
                     e
                 );
-                return Self::default();
+                return Ok(Self::default());
             }
         };
 
@@ -143,43 +124,23 @@ impl Conf {
                     "Could not read config file '{}': {}. Falling back to defaults.",
                     filepath, e
                 );
-                return Self::default();
+                return Ok(Self::default());
             }
         };
 
-        let discovery = match lua_config::load_discovery_conf(&contents) {
-            Ok(d) => d,
-            Err(e) => {
-                warn!(
-                    "Could not parse discovery settings from '{}': {}. Using defaults.",
-                    filepath, e
-                );
-                DiscoveryConf::default()
-            }
-        };
-
-        let adapters = match lua_config::discover_adapters(&discovery).await {
-            Ok(a) => a,
-            Err(e) => {
-                warn!(
-                    "Could not discover Bluetooth adapters: {}. Continuing with empty adapter list.",
-                    e
-                );
-                vec![]
-            }
-        };
+        let adapters = lua_config::discover_adapters().await?;
 
         match lua_config::load_config(&contents, adapters) {
             Ok(conf) => {
                 info!("Successfully loaded configuration from '{}'.", filepath);
-                conf
+                Ok(conf)
             }
             Err(e) => {
                 warn!(
                     "Could not parse config file '{}': {}. Falling back to defaults.",
                     filepath, e
                 );
-                Self::default()
+                Ok(Self::default())
             }
         }
     }

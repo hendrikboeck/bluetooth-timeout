@@ -119,9 +119,7 @@ impl BluetoothService {
                     // The receiver fell behind (e.g. a burst of connect/disconnect signals on
                     // wake). Re-sync from D-Bus instead of aborting, otherwise the dropped
                     // receiver would close the broadcast channel for good.
-                    warn!(
-                        "Missed {skipped} Bluetooth events; re-synchronizing adapter state."
-                    );
+                    warn!("Missed {skipped} Bluetooth events; re-synchronizing adapter state.");
                     self.sync_state().await;
                     continue;
                 }
@@ -282,7 +280,10 @@ impl BluetoothService {
         };
 
         self.reconcile_timer();
-        debug!("Re-synchronized BluetoothService state to {:#?}", self.state);
+        debug!(
+            "Re-synchronized BluetoothService state to {:#?}",
+            self.state
+        );
     }
 
     /// Ensures the timeout timer matches the current state: a timer runs only while idle.

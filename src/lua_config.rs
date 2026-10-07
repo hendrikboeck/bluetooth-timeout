@@ -1,8 +1,5 @@
 // -- std imports
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::time::Duration;
 
 // -- crate imports
 use anyhow::{Context, Result};
@@ -28,40 +25,25 @@ pub struct LuaAdapter {
     pub discoverable: bool,
 }
 
-/// Discovers all Bluetooth adapters via D-Bus, retrying until at least one is found.
+/// Discovers all Bluetooth adapters via D-Bus.
 ///
-/// At boot or after system wake, the Bluetooth adapter may not be enumerated by `BlueZ` yet. A
-/// single discovery attempt would return an empty adapter list, leaving the daemon with nothing
-/// to manage (and the event observer with no subscribers, causing "channel closed" errors).
-/// Discovery is therefore retried according to `conf` until an adapter appears.
-pub async fn discover_adapters(conf: &super::configuration::DiscoveryConf) -> Result<Vec<LuaAdapter>> {
-    let mut last_error = None;
+/// At boot or after system wake, `BlueZ` may not have enumerated the adapter yet. Discovery is
+/// performed once and fails if no adapters are found; the systemd service then restarts the
+/// daemon (`Restart=on-failure`) until an adapter appears.
+///
+/// # Errors
+///
+/// - [`anyhow::Error`] if the D-Bus call fails or no adapters are discovered.
+pub async fn discover_adapters() -> Result<Vec<LuaAdapter>> {
+    let adapters = discover_adapters_once().await?;
 
-    for attempt in 1..=conf.attempts {
-        match discover_adapters_once().await {
-            Ok(adapters) if !adapters.is_empty() => return Ok(adapters),
-            Ok(_) => {
-                warn!(
-                    "No Bluetooth adapters discovered (attempt {attempt}/{}); retrying...",
-                    conf.attempts
-                );
-                last_error = None;
-            }
-            Err(e) => {
-                warn!(
-                    "Could not discover Bluetooth adapters (attempt {attempt}/{}): {e}",
-                    conf.attempts
-                );
-                last_error = Some(e);
-            }
-        }
-
-        if attempt < conf.attempts {
-            tokio::time::sleep(conf.delay).await;
-        }
+    if adapters.is_empty() {
+        return Err(anyhow::anyhow!(
+            "No Bluetooth adapters discovered via D-Bus"
+        ));
     }
 
-    last_error.map_or_else(|| Ok(vec![]), Err)
+    Ok(adapters)
 }
 
 /// Performs a single adapter discovery attempt via D-Bus.
@@ -143,37 +125,13 @@ fn inject_adapters(lua: &Lua, adapters: Vec<LuaAdapter>) -> mlua::Result<()> {
 }
 
 /// Creates the `find_adapters(filter)` Lua function for config-driven adapter discovery.
-///
-/// If `filter` contains a `retries` table (`{ attempts = N, delay = "2s" }`), its discovery
-/// settings are captured into `retry_probe` so the caller can read them before performing the
-/// actual discovery.
-fn create_find_adapters(
-    lua: &Lua,
-    retry_probe: Arc<Mutex<Option<super::configuration::DiscoveryConf>>>,
-) -> mlua::Result<mlua::Function> {
-    lua.create_function(move |lua, filter: Option<Table>| {
+fn create_find_adapters(lua: &Lua) -> mlua::Result<mlua::Function> {
+    lua.create_function(|lua, filter: Option<Table>| {
         let adapters: Table = lua.globals().get("__ALL_ADAPTERS")?;
 
         let Some(filter) = filter else {
             return Ok(adapters);
         };
-
-        // Capture discovery retry settings when provided.
-        if let Ok(retries) = filter.get::<Table>("retries") {
-            let defaults = super::configuration::DiscoveryConf::default();
-            let attempts = retries
-                .get::<usize>("attempts")
-                .unwrap_or(defaults.attempts);
-            let delay = retries
-                .get::<String>("delay")
-                .ok()
-                .and_then(|s| humantime::parse_duration(&s).ok())
-                .unwrap_or(defaults.delay);
-            *retry_probe.lock().unwrap() = Some(super::configuration::DiscoveryConf {
-                attempts,
-                delay,
-            });
-        }
 
         let filter_name: Option<String> = filter.get("name").ok();
         let filter_name_pattern: Option<String> = filter.get("name_pattern").ok();
@@ -242,15 +200,9 @@ fn lua_match(lua: &Lua, s: &str, pattern: &str) -> mlua::Result<bool> {
 
 /// Evaluates a Lua config source and invokes `extract` with the resulting table.
 ///
-/// Injects the discovered adapters (or an empty list, when only discovery settings are needed)
-/// and the `find_adapters` helper before evaluating `lua_source`. The `Lua` instance is kept
-/// alive for the duration of `extract`.
-fn evaluate_config<F, R>(
-    lua_source: &str,
-    adapters: Vec<LuaAdapter>,
-    retry_probe: Arc<Mutex<Option<super::configuration::DiscoveryConf>>>,
-    extract: F,
-) -> Result<R>
+/// Injects the discovered adapters and the `find_adapters` helper before evaluating
+/// `lua_source`. The `Lua` instance is kept alive for the duration of `extract`.
+fn evaluate_config<F, R>(lua_source: &str, adapters: Vec<LuaAdapter>, extract: F) -> Result<R>
 where
     F: FnOnce(Table) -> Result<R>,
 {
@@ -259,7 +211,7 @@ where
         .map_err(|e| anyhow::anyhow!("Failed to inject adapters into Lua: {e}"))?;
 
     lua.globals()
-        .set("find_adapters", create_find_adapters(&lua, retry_probe)?)
+        .set("find_adapters", create_find_adapters(&lua)?)
         .map_err(|e| anyhow::anyhow!("Failed to set find_adapters: {e}"))?;
 
     let result: Table = lua
@@ -270,17 +222,6 @@ where
     extract(result)
 }
 
-/// Extracts the adapter discovery settings from a Lua config source.
-///
-/// This runs before adapters are discovered, so no real adapters are injected yet. The settings
-/// are read from the `retries` table passed to `find_adapters` (e.g.
-/// `find_adapters { retries = { attempts = 6, delay = "2s" } }`).
-pub fn load_discovery_conf(lua_source: &str) -> Result<super::configuration::DiscoveryConf> {
-    let probe = Arc::new(Mutex::new(None));
-    evaluate_config(lua_source, vec![], probe.clone(), |_| Ok(()))?;
-    Ok(probe.lock().unwrap().take().unwrap_or_default())
-}
-
 /// Load the Lua config source and return a Conf.
 ///
 /// `lua_source` is the contents of the config.lua file.
@@ -289,9 +230,7 @@ pub fn load_config(
     lua_source: &str,
     adapters: Vec<LuaAdapter>,
 ) -> Result<super::configuration::Conf> {
-    evaluate_config(lua_source, adapters, Arc::new(Mutex::new(None)), |result| {
-        extract_conf(&result)
-    })
+    evaluate_config(lua_source, adapters, |result| extract_conf(&result))
 }
 
 /// Extracts the full [`super::configuration::Conf`] from an evaluated config table.
