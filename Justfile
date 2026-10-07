@@ -7,16 +7,9 @@ CONFIG_DIR := "$HOME/.config/" + BIN_NAME
 
 default: build
 
-# Build the Rust binary in release mode, temporarily disabling .cargo/config.toml
+# Build the Rust binary in release mode
 build:
-    if [ -f .cargo/config.toml ]; then \
-        echo "Temporarily disabling .cargo/config.toml"; \
-        mv .cargo/config.toml .cargo/config.toml.bak; \
-        cargo build --release; \
-        mv .cargo/config.toml.bak .cargo/config.toml; \
-    else \
-        cargo build --release; \
-    fi
+    cargo build --release
 
 install *args: build
     bash contrib/scripts/install.sh {{args}}

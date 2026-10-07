@@ -58,8 +58,6 @@ The project uses a [Justfile](Justfile) to automate building and installation.
     just install --overwrite-config                 # overwrite config
     ```
 
-    _Note: The build process temporarily moves `.cargo/config.toml` to avoid conflicts with unstable Tokio flags during release builds._
-
 ## Configuration
 
 Configuration is written in **Lua** at `~/.config/bluetooth-timeout/config.lua`. LSP type annotations are provided alongside (`types.lua`, `.luarc.json`). Copy the [example config](contrib/config/config.example.lua) to get started.
@@ -158,4 +156,19 @@ Verbosity flags are available in debug builds only:
 
 ```sh
 cargo run -- -vv
+```
+
+### tokio-console
+
+The optional `tokio-console` feature integrates [`console-subscriber`](https://crates.io/crates/console-subscriber) to inspect the async runtime. It is only active in **debug builds** and relies on Tokio's unstable internals, so it must be built with the `tokio_unstable` cfg flag via `RUSTFLAGS`:
+
+```sh
+RUSTFLAGS="--cfg tokio_unstable" cargo run --features tokio-console
+```
+
+Then attach `tokio-console` in a separate terminal:
+
+```sh
+cargo install tokio-console
+tokio-console
 ```

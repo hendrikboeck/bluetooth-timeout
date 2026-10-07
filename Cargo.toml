@@ -24,7 +24,7 @@ xdg = "3.0.0"
 zbus = { version = "5.18.0", features = ["tokio"] }
 
 [features]
-tokio-console = ["dep:console-subscriber"]
+tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 
 [profile.release]
 opt-level = "z"   # optimize for size (like ReleaseSmall)
