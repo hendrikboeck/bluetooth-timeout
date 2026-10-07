@@ -17,16 +17,16 @@ mod notification;
 /// Inactivity timeout task with warning notifications.
 mod timeout;
 
+// -- std imports
 use core::panic;
+use std::backtrace::Backtrace;
 
 // -- crate imports
 use tracing::{debug, error};
 
 // -- module imports
-use crate::{
-    bluetooth::{observer::BluetoothEventObserver, service::BluetoothService},
-    configuration::Conf,
-};
+use bluetooth::{observer::BluetoothEventObserver, service::BluetoothService};
+use configuration::Conf;
 
 /// Entry point: parses CLI args, loads configuration, and runs the daemon
 /// on a single-threaded tokio runtime.
@@ -35,10 +35,7 @@ async fn main() {
     // Panics in spawned tasks are otherwise swallowed by Tokio. Install a hook that prints a
     // stack trace and exits non-zero so systemd (`Restart=on-failure`) restarts the daemon.
     std::panic::set_hook(Box::new(|info| {
-        eprintln!(
-            "{info}\nStack trace:\n{}",
-            std::backtrace::Backtrace::force_capture()
-        );
+        eprintln!("{info}\nStack trace:\n{}", Backtrace::force_capture());
         std::process::exit(1);
     }));
 

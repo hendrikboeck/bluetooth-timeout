@@ -67,7 +67,7 @@ impl TimeoutTask {
         tokio::time::sleep(self.timeout).await;
         match self.service_proxy.turn_off_adapter().await {
             Ok(()) => info!("Adapter turned off."),
-            Err(e) => warn!("Failed to turn off adapter: {}", e),
+            Err(e) => warn!("Failed to turn off adapter: {e}"),
         }
 
         if self.notification_conf.enabled {
@@ -78,7 +78,7 @@ impl TimeoutTask {
                 "bluetooth-disabled-symbolic",
             )
             .await
-            .inspect_err(|e| error!("Failed to show notification: {}", e));
+            .inspect_err(|e| error!("Failed to show notification: {e}"));
         }
         info!("Timeout task completed.");
     }
@@ -116,7 +116,7 @@ impl TimeoutTask {
             "bluetooth-symbolic",
         )
         .await
-        .inspect_err(|e| error!("Failed to show notification: {}", e))
+        .inspect_err(|e| error!("Failed to show notification: {e}"))
         .unwrap_or(0);
     }
 

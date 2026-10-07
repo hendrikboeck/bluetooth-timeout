@@ -7,6 +7,7 @@ use anyhow::Context;
 
 // -- crate imports
 use anyhow::Result;
+use tap::TapFallible;
 use tracing::{info, warn};
 
 // -- module imports
@@ -106,42 +107,27 @@ impl Conf {
     /// Returns an error when no Bluetooth adapters can be discovered, so the caller can exit and
     /// let the systemd service restart the daemon (`Restart=on-failure`).
     pub async fn load() -> Result<Self> {
-        let filepath = match conf_filepath() {
-            Ok(p) => p,
-            Err(e) => {
-                warn!(
-                    "Could not determine config file path: {}. Falling back to defaults.",
-                    e
-                );
-                return Ok(Self::default());
-            }
-        };
+        let filepath = conf_filepath()
+            .tap_err(|e| {
+                warn!("Could not determine config file path: {e}. Falling back to defaults.");
+            })
+            .unwrap_or_default();
 
-        let contents = match fs::read_to_string(&filepath) {
-            Ok(c) => c,
-            Err(e) => {
-                warn!(
-                    "Could not read config file '{}': {}. Falling back to defaults.",
-                    filepath, e
-                );
-                return Ok(Self::default());
-            }
-        };
+        let contents = fs::read_to_string(&filepath)
+            .tap_err(|e| {
+                warn!("Could not read config file '{filepath}': {e}. Falling back to defaults.");
+            })
+            .unwrap_or_default();
 
         let adapters = lua_config::discover_adapters().await?;
 
-        match lua_config::load_config(&contents, adapters) {
-            Ok(conf) => {
-                info!("Successfully loaded configuration from '{}'.", filepath);
-                Ok(conf)
-            }
-            Err(e) => {
-                warn!(
-                    "Could not parse config file '{}': {}. Falling back to defaults.",
-                    filepath, e
-                );
-                Ok(Self::default())
-            }
-        }
+        let conf = lua_config::load_config(&contents, adapters)
+            .tap_ok(|_| info!("Successfully loaded configuration from '{filepath}'."))
+            .tap_err(|e| {
+                warn!("Could not load config file '{filepath}': {e}. Falling back to defaults.");
+            })
+            .unwrap_or_default();
+
+        Ok(conf)
     }
 }
